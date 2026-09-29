@@ -1,0 +1,228 @@
+{
+  "name": "Missed Call Text-Back 4 - Daily Summary",
+  "nodes": [
+    {
+      "id": "f0887e7f-115b-4b4c-8175-7ce899181a59",
+      "name": "Every Day at 6pm",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.2,
+      "position": [
+        0,
+        0
+      ],
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "days",
+              "triggerAtHour": 18
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "2a57c8a2-9632-4763-b3c4-7a65e7d16bb5",
+      "name": "Load Settings",
+      "type": "n8n-nodes-base.dataTable",
+      "typeVersion": 1.1,
+      "position": [
+        224,
+        0
+      ],
+      "parameters": {
+        "resource": "row",
+        "operation": "get",
+        "dataTableId": {
+          "__rl": true,
+          "mode": "id",
+          "value": "SELECT_MCTB_SETTINGS_TABLE",
+          "cachedResultName": "mctb_settings"
+        },
+        "limit": 1
+      },
+      "executeOnce": true
+    },
+    {
+      "id": "a5a9322f-51fb-4b04-804a-7880d9cbeb83",
+      "name": "Leads Today",
+      "type": "n8n-nodes-base.dataTable",
+      "typeVersion": 1.1,
+      "position": [
+        448,
+        0
+      ],
+      "parameters": {
+        "resource": "row",
+        "operation": "get",
+        "dataTableId": {
+          "__rl": true,
+          "mode": "id",
+          "value": "SELECT_MCTB_LEADS_TABLE",
+          "cachedResultName": "mctb_leads"
+        },
+        "matchType": "allConditions",
+        "filters": {
+          "conditions": [
+            {
+              "keyName": "created_at",
+              "condition": "gte",
+              "keyValue": "={{ $now.minus(1, 'day').toISO() }}"
+            }
+          ]
+        },
+        "returnAll": true
+      },
+      "executeOnce": true,
+      "alwaysOutputData": true
+    },
+    {
+      "id": "47dba785-5515-412a-8532-c3a8237661f7",
+      "name": "Calls Today",
+      "type": "n8n-nodes-base.dataTable",
+      "typeVersion": 1.1,
+      "position": [
+        672,
+        0
+      ],
+      "parameters": {
+        "resource": "row",
+        "operation": "get",
+        "dataTableId": {
+          "__rl": true,
+          "mode": "id",
+          "value": "SELECT_MCTB_CALLS_TABLE",
+          "cachedResultName": "mctb_calls"
+        },
+        "matchType": "allConditions",
+        "filters": {
+          "conditions": [
+            {
+              "keyName": "at",
+              "condition": "gte",
+              "keyValue": "={{ $now.minus(1, 'day').toISO() }}"
+            }
+          ]
+        },
+        "returnAll": true
+      },
+      "executeOnce": true,
+      "alwaysOutputData": true
+    },
+    {
+      "id": "5ff6238a-908b-445f-862d-4a78ea8deef9",
+      "name": "Build Summary Email",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        896,
+        0
+      ],
+      "parameters": {
+        "jsCode": "const s = $('Load Settings').first().json;\nconst NL = String.fromCharCode(10);\nconst tz = s.timezone || 'America/Chicago';\nconst cur = s.currency || '$';\nconst since = Date.now() - 86400000;\nconst ms = v => (v ? new Date(v).getTime() : 0);\nconst fmtPhone = p => {\n  const d = String(p || '').split('').filter(c => c >= '0' && c <= '9').join('').slice(-10);\n  return d.length === 10 ? '(' + d.slice(0, 3) + ') ' + d.slice(3, 6) + '-' + d.slice(6) : String(p || '');\n};\nconst when = v => DateTime.fromMillis(ms(v)).setZone(tz).toFormat('ccc h:mm a');\nconst money = n => cur + Math.round(Number(n) || 0).toLocaleString('en-US');\n\nconst calls = $('Calls Today').all().map(i => i.json).filter(r => r && r.call_id && ms(r.at) >= since);\nconst leads = $('Leads Today').all().map(i => i.json).filter(r => r && r.lead_id && ms(r.created_at) >= since);\nconst missed = calls.filter(c => c.outcome !== 'answered');\nconst texted = calls.filter(c => c.text_back_seconds !== null && c.text_back_seconds !== undefined);\nconst replied = leads.filter(l => l.first_reply_at);\nconst booked = leads.filter(l => l.status === 'booked');\nconst value = booked.reduce((a, l) => a + (Number(l.value) || 0), 0);\nconst needs = leads.filter(l => (l.urgent || l.needs_call) && !l.ack && !['lost', 'opted_out'].includes(l.status));\nconst quiet = leads.filter(l => ['texted', 'no_reply'].includes(l.status));\nconst avg = texted.length ? Math.round(texted.reduce((a, c) => a + Number(c.text_back_seconds), 0) / texted.length) : 0;\n\nconst lines = [\n  'Hi ' + s.ownerName + ',',\n  '',\n  'Here is what happened with missed calls in the last 24 hours.',\n  '',\n  'Calls: ' + calls.length + ' (' + (calls.length - missed.length) + ' answered, ' + missed.length + ' missed)',\n  'Texted back: ' + texted.length + (avg ? ', ' + avg + ' seconds after the call on average' : ''),\n  'Replied: ' + replied.length,\n  'Booked: ' + booked.length + ', worth about ' + money(value),\n  ''\n];\nif (needs.length) {\n  lines.push('Still needs you:');\n  needs.forEach(l => lines.push('- ' + (l.name || fmtPhone(l.phone)) + ', ' + (l.urgent ? 'emergency: ' + (l.issue || 'no details') : 'asked for a call back') + ', ' + fmtPhone(l.phone)));\n  lines.push('');\n}\nif (booked.length) {\n  lines.push('New jobs:');\n  booked.forEach(l => lines.push('- ' + when(l.slot) + ': ' + (l.issue || 'Job') + ' for ' + (l.name || fmtPhone(l.phone)) + ' in ' + (l.zip || 'the area') + ', ' + money(l.value) + (l.booked_by === 'ai' ? ', booked by the AI' : '')));\n  lines.push('');\n}\nif (quiet.length) {\n  lines.push('No reply yet: ' + quiet.map(l => fmtPhone(l.phone)).join(', '));\n  lines.push('');\n}\nlines.push('Missed Call Text-Back');\n\nreturn [{ json: {\n  to: s.ownerEmail,\n  subject: 'Missed calls today: ' + missed.length + ' missed, ' + booked.length + ' booked (' + money(value) + ')',\n  message: lines.join(NL)\n} }];\n"
+      }
+    },
+    {
+      "id": "37312b7f-ba34-4256-b3de-313ef250ddaa",
+      "name": "Email the Owner",
+      "type": "n8n-nodes-base.gmail",
+      "typeVersion": 2.2,
+      "position": [
+        1120,
+        0
+      ],
+      "parameters": {
+        "sendTo": "={{ $json.to }}",
+        "subject": "={{ $json.subject }}",
+        "emailType": "text",
+        "message": "={{ $json.message }}",
+        "options": {
+          "appendAttribution": false
+        }
+      },
+      "webhookId": "51130feb-e286-4597-a456-15ad8670db67",
+      "credentials": {
+        "gmailOAuth2": {
+          "id": "",
+          "name": "Gmail account"
+        }
+      }
+    },
+    {
+      "id": "be56efdc-1276-4e40-9de2-393a2e4bf4c1",
+      "name": "Sticky Note 460aad9a",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        496,
+        0
+      ],
+      "parameters": {
+        "content": "## Daily summary\nAt 6pm the owner gets one plain email: calls, missed calls, texts sent, replies, jobs booked and their value, plus anyone who still needs a call. No AI is used here.",
+        "color": 7
+      }
+    }
+  ],
+  "connections": {
+    "Every Day at 6pm": {
+      "main": [
+        [
+          {
+            "node": "Load Settings",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Load Settings": {
+      "main": [
+        [
+          {
+            "node": "Leads Today",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Leads Today": {
+      "main": [
+        [
+          {
+            "node": "Calls Today",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Calls Today": {
+      "main": [
+        [
+          {
+            "node": "Build Summary Email",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Build Summary Email": {
+      "main": [
+        [
+          {
+            "node": "Email the Owner",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1",
+    "timezone": "America/Chicago"
+  },
+  "pinData": {}
+}

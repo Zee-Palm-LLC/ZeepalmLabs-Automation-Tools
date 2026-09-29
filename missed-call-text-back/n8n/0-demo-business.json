@@ -1,0 +1,499 @@
+{
+  "name": "Missed Call Text-Back 0 - Demo Business",
+  "nodes": [
+    {
+      "id": "fa14b748-32a6-40b0-a44b-f0f4b76d62b9",
+      "name": "Load the Demo Business",
+      "type": "n8n-nodes-base.manualTrigger",
+      "typeVersion": 1,
+      "position": [
+        0,
+        96
+      ],
+      "parameters": {}
+    },
+    {
+      "id": "2c241183-ced1-4fd2-a824-c9deffef2cd4",
+      "name": "Load Settings",
+      "type": "n8n-nodes-base.dataTable",
+      "typeVersion": 1.1,
+      "position": [
+        224,
+        192
+      ],
+      "parameters": {
+        "resource": "row",
+        "operation": "get",
+        "dataTableId": {
+          "__rl": true,
+          "mode": "id",
+          "value": "SELECT_MCTB_SETTINGS_TABLE",
+          "cachedResultName": "mctb_settings"
+        },
+        "limit": 1
+      },
+      "executeOnce": true,
+      "alwaysOutputData": true
+    },
+    {
+      "id": "6d8c9982-895f-476e-8d13-2bb56c363f29",
+      "name": "When Called by the Dashboard",
+      "type": "n8n-nodes-base.executeWorkflowTrigger",
+      "typeVersion": 1.2,
+      "position": [
+        0,
+        288
+      ],
+      "parameters": {
+        "inputSource": "passthrough"
+      }
+    },
+    {
+      "id": "871825cf-0f33-4ef2-8c26-17af9d249b5f",
+      "name": "Default Settings",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        448,
+        192
+      ],
+      "parameters": {
+        "jsCode": "const cur = $input.first() ? $input.first().json : {};\nconst row = {\n  settings_key: 'main',\n  businessName: 'BrightFlow Plumbing & Heating',\n  shortName: 'BrightFlow',\n  ownerName: 'Dan',\n  ownerPhone: '+15125550100',\n  ownerEmail: 'owner@your-business.com',\n  businessPhone: '+15125550123',\n  currency: '$',\n  timezone: 'America/Chicago',\n  areaLabel: 'Austin, Cedar Park and Round Rock',\n  serviceZips: '787, 78613, 78664, 78665, 78681',\n  weekdayHours: '07:00-18:00',\n  saturdayHours: '08:00-13:00',\n  slotTimes: '08:00, 10:30, 13:00, 15:30',\n  vans: 2,\n  ringSeconds: 20,\n  textBack: \"Hi, it's {business}. Sorry we missed your call, we're out on a job right now. What can we help with? Reply here and I'll get you sorted.\",\n  afterHours: \"Hi, it's {business}. Sorry we missed your call, we're closed right now but we still handle emergencies. What's going on? Reply here and I'll get you sorted.\",\n  followUpMinutes: 30,\n  finalFollowUpHours: 20,\n  aiEnabled: true,\n  demoMode: true,\n  claudeModel: 'claude-opus-5',\n  services: JSON.stringify([\n    { key: 'leak', name: 'Burst or leaking pipe', from: 149, typical: 480, urgent: true },\n    { key: 'drain', name: 'Blocked drain', from: 129, typical: 260 },\n    { key: 'heater', name: 'Water heater repair', from: 189, typical: 690 },\n    { key: 'heating', name: 'No heat or furnace repair', from: 159, typical: 380 },\n    { key: 'toilet', name: 'Toilet repair', from: 99, typical: 190 },\n    { key: 'faucet', name: 'Faucet or sink repair', from: 99, typical: 170 },\n    { key: 'install', name: 'New fixture install', from: 0, typical: 650 },\n    { key: 'gas', name: 'Gas leak', from: 0, typical: 350, urgent: true },\n    { key: 'other', name: 'General plumbing', from: 119, typical: 240 }\n  ])\n};\nObject.keys(row).forEach(k => {\n  if (cur && cur[k] !== undefined && cur[k] !== null && cur[k] !== '') row[k] = cur[k];\n});\nrow.settings_key = 'main';\nreturn [{ json: row }];\n"
+      }
+    },
+    {
+      "id": "e7a4661d-40b6-4a30-be86-70fb5f478dee",
+      "name": "Save Settings",
+      "type": "n8n-nodes-base.dataTable",
+      "typeVersion": 1.1,
+      "position": [
+        672,
+        192
+      ],
+      "parameters": {
+        "resource": "row",
+        "operation": "upsert",
+        "dataTableId": {
+          "__rl": true,
+          "mode": "id",
+          "value": "SELECT_MCTB_SETTINGS_TABLE",
+          "cachedResultName": "mctb_settings"
+        },
+        "matchType": "allConditions",
+        "filters": {
+          "conditions": [
+            {
+              "keyName": "settings_key",
+              "condition": "eq",
+              "keyValue": "={{ $json.settings_key }}"
+            }
+          ]
+        },
+        "columns": {
+          "mappingMode": "autoMapInputData",
+          "value": {},
+          "matchingColumns": [],
+          "schema": []
+        },
+        "options": {}
+      }
+    },
+    {
+      "id": "67732529-1058-4726-b66d-69ad91666c3c",
+      "name": "Clear Leads",
+      "type": "n8n-nodes-base.dataTable",
+      "typeVersion": 1.1,
+      "position": [
+        896,
+        192
+      ],
+      "parameters": {
+        "resource": "table",
+        "operation": "clear",
+        "dataTableId": {
+          "__rl": true,
+          "mode": "id",
+          "value": "SELECT_MCTB_LEADS_TABLE",
+          "cachedResultName": "mctb_leads"
+        }
+      },
+      "executeOnce": true
+    },
+    {
+      "id": "3d3a9cc5-63aa-4e19-be5e-ab6a5148b482",
+      "name": "Clear Calls",
+      "type": "n8n-nodes-base.dataTable",
+      "typeVersion": 1.1,
+      "position": [
+        1120,
+        192
+      ],
+      "parameters": {
+        "resource": "table",
+        "operation": "clear",
+        "dataTableId": {
+          "__rl": true,
+          "mode": "id",
+          "value": "SELECT_MCTB_CALLS_TABLE",
+          "cachedResultName": "mctb_calls"
+        }
+      },
+      "executeOnce": true
+    },
+    {
+      "id": "6efc728e-8c78-4a02-bb52-df0da1afdb66",
+      "name": "Clear Messages",
+      "type": "n8n-nodes-base.dataTable",
+      "typeVersion": 1.1,
+      "position": [
+        1344,
+        192
+      ],
+      "parameters": {
+        "resource": "table",
+        "operation": "clear",
+        "dataTableId": {
+          "__rl": true,
+          "mode": "id",
+          "value": "SELECT_MCTB_MESSAGES_TABLE",
+          "cachedResultName": "mctb_messages"
+        }
+      },
+      "executeOnce": true
+    },
+    {
+      "id": "77651786-05f0-49bd-8d6d-47a9b9b34340",
+      "name": "Download Demo Business",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        1568,
+        192
+      ],
+      "parameters": {
+        "method": "GET",
+        "url": "https://raw.githubusercontent.com/Zee-Palm-LLC/ZeepalmLabs-Automation-Tools/main/missed-call-text-back/n8n/demo-business.json",
+        "options": {
+          "response": {
+            "response": {
+              "responseFormat": "json"
+            }
+          }
+        }
+      },
+      "executeOnce": true
+    },
+    {
+      "id": "14acb923-67c6-4e19-8bbd-eb443ccb176d",
+      "name": "Move Dates to Today",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1792,
+        192
+      ],
+      "parameters": {
+        "jsCode": "const d = $input.first().json;\nconst zone = d.timezone || 'America/Chicago';\nconst nowMs = Date.now();\nconst days = Math.floor((nowMs - new Date(d.anchor).getTime()) / 86400000);\nconst shift = v => (v ? DateTime.fromISO(v).setZone(zone).plus({ days }).toUTC().toISO() : null);\nconst ms = v => (v ? new Date(v).getTime() : 0);\n\nconst leads = (d.leads || []).map(l => {\n  const o = Object.assign({}, l);\n  ['slot', 'first_reply_at', 'alerted_at', 'booked_at', 'created_at', 'last_at'].forEach(k => {\n    o[k] = shift(o[k]);\n  });\n  let offered = [];\n  try {\n    offered = JSON.parse(o.offered || '[]');\n  } catch (e) {\n    offered = [];\n  }\n  o.offered = JSON.stringify(offered.map(shift));\n  return o;\n}).filter(l => ms(l.created_at) <= nowMs);\nconst keep = {};\nleads.forEach(l => {\n  keep[l.lead_id] = true;\n  if (ms(l.last_at) > nowMs) l.last_at = new Date(nowMs).toISOString();\n});\nconst calls = (d.calls || []).map(c => Object.assign({}, c, { at: shift(c.at) })).filter(c => ms(c.at) <= nowMs && (!c.lead_id || keep[c.lead_id]));\nconst messages = (d.messages || []).map(m => Object.assign({}, m, { at: shift(m.at) })).filter(m => ms(m.at) <= nowMs && keep[m.lead_id]);\n\nreturn [{ json: { leads, calls, messages } }];\n"
+      }
+    },
+    {
+      "id": "308bfd0b-a3be-4050-8a88-b71855ac9ece",
+      "name": "Lead Rows",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        2016,
+        0
+      ],
+      "parameters": {
+        "jsCode": "return $input.first().json.leads.map(r => ({ json: r }));\n"
+      }
+    },
+    {
+      "id": "8f4ec622-c99e-41a2-9845-7ac05f20ec1d",
+      "name": "Save Demo Leads",
+      "type": "n8n-nodes-base.dataTable",
+      "typeVersion": 1.1,
+      "position": [
+        2240,
+        0
+      ],
+      "parameters": {
+        "resource": "row",
+        "operation": "insert",
+        "dataTableId": {
+          "__rl": true,
+          "mode": "id",
+          "value": "SELECT_MCTB_LEADS_TABLE",
+          "cachedResultName": "mctb_leads"
+        },
+        "columns": {
+          "mappingMode": "autoMapInputData",
+          "value": {},
+          "matchingColumns": [],
+          "schema": []
+        },
+        "options": {
+          "optimizeBulk": true
+        }
+      }
+    },
+    {
+      "id": "ee1d3ede-6759-4ef2-9a15-1de6cb10ef7e",
+      "name": "Call Rows",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        2016,
+        192
+      ],
+      "parameters": {
+        "jsCode": "return $input.first().json.calls.map(r => ({ json: r }));\n"
+      }
+    },
+    {
+      "id": "33d829a4-6671-4e0c-b123-2892b5f22603",
+      "name": "Save Demo Calls",
+      "type": "n8n-nodes-base.dataTable",
+      "typeVersion": 1.1,
+      "position": [
+        2240,
+        192
+      ],
+      "parameters": {
+        "resource": "row",
+        "operation": "insert",
+        "dataTableId": {
+          "__rl": true,
+          "mode": "id",
+          "value": "SELECT_MCTB_CALLS_TABLE",
+          "cachedResultName": "mctb_calls"
+        },
+        "columns": {
+          "mappingMode": "autoMapInputData",
+          "value": {},
+          "matchingColumns": [],
+          "schema": []
+        },
+        "options": {
+          "optimizeBulk": true
+        }
+      }
+    },
+    {
+      "id": "d7c6be20-0127-4d97-a1cc-ed6532f76258",
+      "name": "Message Rows",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        2016,
+        384
+      ],
+      "parameters": {
+        "jsCode": "return $input.first().json.messages.map(r => ({ json: r }));\n"
+      }
+    },
+    {
+      "id": "02fd3ae9-62ac-4b30-b026-ea3331600d33",
+      "name": "Save Demo Messages",
+      "type": "n8n-nodes-base.dataTable",
+      "typeVersion": 1.1,
+      "position": [
+        2240,
+        384
+      ],
+      "parameters": {
+        "resource": "row",
+        "operation": "insert",
+        "dataTableId": {
+          "__rl": true,
+          "mode": "id",
+          "value": "SELECT_MCTB_MESSAGES_TABLE",
+          "cachedResultName": "mctb_messages"
+        },
+        "columns": {
+          "mappingMode": "autoMapInputData",
+          "value": {},
+          "matchingColumns": [],
+          "schema": []
+        },
+        "options": {
+          "optimizeBulk": true
+        }
+      }
+    },
+    {
+      "id": "d9bf1fb7-4586-4461-9fb4-0f3ca775e29e",
+      "name": "Sticky Note a817e677",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        1056,
+        384
+      ],
+      "parameters": {
+        "content": "## Demo business\nFills the tables with 30 days of a sample plumbing company: calls, conversations and bookings, moved to today's dates. It also writes the default settings the first time.\n\nIt clears every lead, call and message, so only run it on a demo workspace.",
+        "color": 7
+      }
+    }
+  ],
+  "connections": {
+    "Load the Demo Business": {
+      "main": [
+        [
+          {
+            "node": "Load Settings",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Load Settings": {
+      "main": [
+        [
+          {
+            "node": "Default Settings",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "When Called by the Dashboard": {
+      "main": [
+        [
+          {
+            "node": "Load Settings",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Default Settings": {
+      "main": [
+        [
+          {
+            "node": "Save Settings",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Save Settings": {
+      "main": [
+        [
+          {
+            "node": "Clear Leads",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Clear Leads": {
+      "main": [
+        [
+          {
+            "node": "Clear Calls",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Clear Calls": {
+      "main": [
+        [
+          {
+            "node": "Clear Messages",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Clear Messages": {
+      "main": [
+        [
+          {
+            "node": "Download Demo Business",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Download Demo Business": {
+      "main": [
+        [
+          {
+            "node": "Move Dates to Today",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Move Dates to Today": {
+      "main": [
+        [
+          {
+            "node": "Lead Rows",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Call Rows",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Message Rows",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Lead Rows": {
+      "main": [
+        [
+          {
+            "node": "Save Demo Leads",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Call Rows": {
+      "main": [
+        [
+          {
+            "node": "Save Demo Calls",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Message Rows": {
+      "main": [
+        [
+          {
+            "node": "Save Demo Messages",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "pinData": {}
+}

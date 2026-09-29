@@ -1,0 +1,393 @@
+{
+  "name": "Missed Call Text-Back 3 - Follow-ups",
+  "nodes": [
+    {
+      "id": "14f85737-e326-4a11-94ca-bfb6cd86b453",
+      "name": "Every 15 Minutes",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.2,
+      "position": [
+        0,
+        192
+      ],
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "minutes",
+              "minutesInterval": 15
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "64ea3554-b708-4013-b1ee-391a9e75a010",
+      "name": "Load Settings",
+      "type": "n8n-nodes-base.dataTable",
+      "typeVersion": 1.1,
+      "position": [
+        224,
+        192
+      ],
+      "parameters": {
+        "resource": "row",
+        "operation": "get",
+        "dataTableId": {
+          "__rl": true,
+          "mode": "id",
+          "value": "SELECT_MCTB_SETTINGS_TABLE",
+          "cachedResultName": "mctb_settings"
+        },
+        "limit": 1
+      },
+      "executeOnce": true
+    },
+    {
+      "id": "7682f1ea-feb0-4a75-8762-4cc0e5fc68e0",
+      "name": "Waiting Leads",
+      "type": "n8n-nodes-base.dataTable",
+      "typeVersion": 1.1,
+      "position": [
+        448,
+        192
+      ],
+      "parameters": {
+        "resource": "row",
+        "operation": "get",
+        "dataTableId": {
+          "__rl": true,
+          "mode": "id",
+          "value": "SELECT_MCTB_LEADS_TABLE",
+          "cachedResultName": "mctb_leads"
+        },
+        "matchType": "anyCondition",
+        "filters": {
+          "conditions": [
+            {
+              "keyName": "status",
+              "condition": "eq",
+              "keyValue": "texted"
+            },
+            {
+              "keyName": "status",
+              "condition": "eq",
+              "keyValue": "chatting"
+            }
+          ]
+        },
+        "returnAll": true
+      },
+      "executeOnce": true
+    },
+    {
+      "id": "03705d16-3054-4f6c-b9ab-9e5408c35561",
+      "name": "Pick Nudges",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        672,
+        192
+      ],
+      "parameters": {
+        "jsCode": "const s = $('Load Settings').first().json;\nconst nowMs = Date.now();\nconst nowIso = new Date(nowMs).toISOString();\nconst stamp = nowMs.toString(36);\nconst makeId = p => p + stamp + Math.floor(Math.random() * 46656).toString(36);\nconst ms = v => (v ? new Date(v).getTime() : 0);\nconst firstWait = (Number(s.followUpMinutes) || 30) * 60000;\nconst lastWait = (Number(s.finalFollowUpHours) || 20) * 3600000;\nconst out = [];\n\nfor (const item of $input.all()) {\n  const r = item.json;\n  if (!r || !r.lead_id) continue;\n  const lead = Object.assign({}, r);\n  delete lead.id;\n  delete lead.createdAt;\n  delete lead.updatedAt;\n  const age = nowMs - ms(lead.created_at);\n  const sent = Number(lead.follow_ups) || 0;\n  let text = null;\n  if (lead.status === 'texted' && sent === 0 && age >= firstWait) {\n    lead.follow_ups = 1;\n    text = 'Just checking in, do you still need a hand? Reply here and we can usually get someone out within a day.';\n  } else if (lead.status === 'texted' && sent === 1 && age >= lastWait) {\n    lead.follow_ups = 2;\n    lead.status = 'no_reply';\n    text = \"Last text from us, promise. If you still need a plumber, just reply and we'll fit you in.\";\n  } else if (lead.status === 'chatting' && nowMs - ms(lead.last_at) > 26 * 3600000) {\n    lead.status = 'no_reply';\n  } else {\n    continue;\n  }\n  const message = text ? { msg_id: makeId('m'), lead_id: lead.lead_id, phone: lead.phone, dir: 'out', author: 'ai', body: text, at: nowIso } : null;\n  if (text) lead.last_at = nowIso;\n  out.push({ json: { lead, message, send: !!text && !s.demoMode, to: lead.phone, from: s.businessPhone, text } });\n}\n\nreturn out;\n"
+      }
+    },
+    {
+      "id": "0ac4cfc1-b58a-472f-a7d8-6ef059d9af92",
+      "name": "Lead Rows",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        896,
+        0
+      ],
+      "parameters": {
+        "jsCode": "return $input.all().map(i => ({ json: i.json.lead }));\n"
+      }
+    },
+    {
+      "id": "42009d72-5269-46f9-93e6-4b62561b5919",
+      "name": "Save Leads",
+      "type": "n8n-nodes-base.dataTable",
+      "typeVersion": 1.1,
+      "position": [
+        1120,
+        0
+      ],
+      "parameters": {
+        "resource": "row",
+        "operation": "upsert",
+        "dataTableId": {
+          "__rl": true,
+          "mode": "id",
+          "value": "SELECT_MCTB_LEADS_TABLE",
+          "cachedResultName": "mctb_leads"
+        },
+        "matchType": "allConditions",
+        "filters": {
+          "conditions": [
+            {
+              "keyName": "lead_id",
+              "condition": "eq",
+              "keyValue": "={{ $json.lead_id }}"
+            }
+          ]
+        },
+        "columns": {
+          "mappingMode": "autoMapInputData",
+          "value": {},
+          "matchingColumns": [],
+          "schema": []
+        },
+        "options": {}
+      }
+    },
+    {
+      "id": "532e1201-b754-49a5-be0b-de95796197f9",
+      "name": "Nudge to Send?",
+      "type": "n8n-nodes-base.filter",
+      "typeVersion": 2.3,
+      "position": [
+        896,
+        192
+      ],
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "loose"
+          },
+          "conditions": [
+            {
+              "leftValue": "={{ !!$json.message }}",
+              "rightValue": "",
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      }
+    },
+    {
+      "id": "2f7bb96f-88ea-4604-8ae7-9fa9fa3c66e9",
+      "name": "Text Rows",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1120,
+        192
+      ],
+      "parameters": {
+        "jsCode": "return $input.all().map(i => ({ json: i.json.message }));\n"
+      }
+    },
+    {
+      "id": "ff5e34bb-1b42-4bd9-a123-41276fd6722e",
+      "name": "Save Texts",
+      "type": "n8n-nodes-base.dataTable",
+      "typeVersion": 1.1,
+      "position": [
+        1344,
+        192
+      ],
+      "parameters": {
+        "resource": "row",
+        "operation": "insert",
+        "dataTableId": {
+          "__rl": true,
+          "mode": "id",
+          "value": "SELECT_MCTB_MESSAGES_TABLE",
+          "cachedResultName": "mctb_messages"
+        },
+        "columns": {
+          "mappingMode": "autoMapInputData",
+          "value": {},
+          "matchingColumns": [],
+          "schema": []
+        },
+        "options": {
+          "optimizeBulk": true
+        }
+      }
+    },
+    {
+      "id": "8d0d3f52-d438-43f7-8f98-f9040d79a06d",
+      "name": "Send for Real?",
+      "type": "n8n-nodes-base.filter",
+      "typeVersion": 2.3,
+      "position": [
+        896,
+        384
+      ],
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "loose"
+          },
+          "conditions": [
+            {
+              "leftValue": "={{ !!$json.send }}",
+              "rightValue": "",
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      }
+    },
+    {
+      "id": "3fdeaf53-4766-4510-ac47-f1afa79da994",
+      "name": "Send the Nudge",
+      "type": "n8n-nodes-base.twilio",
+      "typeVersion": 1,
+      "position": [
+        1120,
+        384
+      ],
+      "parameters": {
+        "resource": "sms",
+        "operation": "send",
+        "from": "={{ $json.from }}",
+        "to": "={{ $json.to }}",
+        "message": "={{ $json.text }}",
+        "options": {}
+      },
+      "retryOnFail": true,
+      "maxTries": 2,
+      "onError": "continueRegularOutput"
+    },
+    {
+      "id": "f16fbc52-a2f0-48f3-9ae0-afc33ed71688",
+      "name": "Sticky Note e0fe59df",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        608,
+        384
+      ],
+      "parameters": {
+        "content": "## Follow-ups\nPeople who never replied get one friendly nudge after the first wait and a last one the next day, then the lead is marked no reply. Conversations that go quiet for a day are closed too.\n\nIn demo mode nothing is sent.",
+        "color": 7
+      }
+    }
+  ],
+  "connections": {
+    "Every 15 Minutes": {
+      "main": [
+        [
+          {
+            "node": "Load Settings",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Load Settings": {
+      "main": [
+        [
+          {
+            "node": "Waiting Leads",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Waiting Leads": {
+      "main": [
+        [
+          {
+            "node": "Pick Nudges",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Pick Nudges": {
+      "main": [
+        [
+          {
+            "node": "Lead Rows",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Nudge to Send?",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Send for Real?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Lead Rows": {
+      "main": [
+        [
+          {
+            "node": "Save Leads",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Nudge to Send?": {
+      "main": [
+        [
+          {
+            "node": "Text Rows",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Text Rows": {
+      "main": [
+        [
+          {
+            "node": "Save Texts",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Send for Real?": {
+      "main": [
+        [
+          {
+            "node": "Send the Nudge",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1",
+    "timezone": "America/Chicago"
+  },
+  "pinData": {}
+}

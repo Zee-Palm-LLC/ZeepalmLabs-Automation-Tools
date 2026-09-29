@@ -1,0 +1,666 @@
+{
+  "name": "Missed Call Text-Back 1 - Missed Call",
+  "nodes": [
+    {
+      "id": "c28eca82-4f24-4ef6-81d0-63f7801c1dce",
+      "name": "Twilio Incoming Call",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2.1,
+      "position": [
+        0,
+        0
+      ],
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "mctb-voice",
+        "responseMode": "responseNode",
+        "options": {
+          "allowedOrigins": "*"
+        }
+      },
+      "webhookId": "285aee17-16cf-4794-81cd-a5a9b158c058"
+    },
+    {
+      "id": "6591e12e-5d0a-4737-97db-6cdabb5ee9e2",
+      "name": "Settings for Ringing",
+      "type": "n8n-nodes-base.dataTable",
+      "typeVersion": 1.1,
+      "position": [
+        224,
+        0
+      ],
+      "parameters": {
+        "resource": "row",
+        "operation": "get",
+        "dataTableId": {
+          "__rl": true,
+          "mode": "id",
+          "value": "SELECT_MCTB_SETTINGS_TABLE",
+          "cachedResultName": "mctb_settings"
+        },
+        "limit": 1
+      },
+      "executeOnce": true
+    },
+    {
+      "id": "040a98e5-678c-42ca-ac5d-4e87a7155972",
+      "name": "Ring the Owner",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.5,
+      "position": [
+        448,
+        0
+      ],
+      "parameters": {
+        "respondWith": "text",
+        "responseBody": "=<?xml version=\"1.0\" encoding=\"UTF-8\"?><Response><Dial timeout=\"{{ $json.ringSeconds || 20 }}\" action=\"{{ $('Twilio Incoming Call').first().json.webhookUrl.replace('mctb-voice', 'mctb-voice-status') }}\" method=\"POST\"><Number>{{ $json.ownerPhone }}</Number></Dial></Response>",
+        "options": {
+          "responseHeaders": {
+            "entries": [
+              {
+                "name": "Content-Type",
+                "value": "text/xml"
+              }
+            ]
+          }
+        }
+      }
+    },
+    {
+      "id": "f86bb73b-c136-4ed5-9a67-6881bc0fd86c",
+      "name": "Twilio Call Ended",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2.1,
+      "position": [
+        0,
+        416
+      ],
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "mctb-voice-status",
+        "responseMode": "responseNode",
+        "options": {
+          "allowedOrigins": "*"
+        }
+      },
+      "webhookId": "ae46b745-918f-48a6-a62b-d734475c9a46"
+    },
+    {
+      "id": "7dccd7b1-8e6e-4464-af0b-c462dad007fc",
+      "name": "Reply to Twilio",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.5,
+      "position": [
+        224,
+        416
+      ],
+      "parameters": {
+        "respondWith": "text",
+        "responseBody": "={{ ['completed', 'answered'].includes(String($json.body.DialCallStatus || '').toLowerCase()) ? '<Response><Hangup/></Response>' : '<Response><Say>Sorry we missed your call. We have just sent you a text message so we can help you right away.</Say><Hangup/></Response>' }}",
+        "options": {
+          "responseHeaders": {
+            "entries": [
+              {
+                "name": "Content-Type",
+                "value": "text/xml"
+              }
+            ]
+          }
+        }
+      }
+    },
+    {
+      "id": "266595b3-4a18-43e8-a073-35420a69ddf5",
+      "name": "Call Details",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        448,
+        512
+      ],
+      "parameters": {
+        "jsCode": "const j = $input.first().json;\nconst b = j.body && typeof j.body === 'object' ? j.body : null;\nreturn [{ json: {\n  phone: String(b ? b.From || '' : j.phone || '').trim(),\n  status: b ? String(b.DialCallStatus || 'no-answer') : 'no-answer',\n  duration: b ? Number(b.DialCallDuration || 0) : 0,\n  via: b ? 'twilio' : 'dashboard',\n  received_at: new Date().toISOString()\n} }];\n"
+      }
+    },
+    {
+      "id": "adfb2b68-f0bc-4a39-95f8-007607a586d5",
+      "name": "When Called by the Dashboard",
+      "type": "n8n-nodes-base.executeWorkflowTrigger",
+      "typeVersion": 1.2,
+      "position": [
+        224,
+        608
+      ],
+      "parameters": {
+        "inputSource": "workflowInputs",
+        "workflowInputs": {
+          "values": [
+            {
+              "name": "phone",
+              "type": "string"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "2cdd4e6e-07bc-4d7d-afd2-e36b29ea793e",
+      "name": "Load Settings",
+      "type": "n8n-nodes-base.dataTable",
+      "typeVersion": 1.1,
+      "position": [
+        672,
+        512
+      ],
+      "parameters": {
+        "resource": "row",
+        "operation": "get",
+        "dataTableId": {
+          "__rl": true,
+          "mode": "id",
+          "value": "SELECT_MCTB_SETTINGS_TABLE",
+          "cachedResultName": "mctb_settings"
+        },
+        "limit": 1
+      },
+      "executeOnce": true
+    },
+    {
+      "id": "d2f64bb0-3484-4949-807f-cc7c67b1c0a2",
+      "name": "Find Caller",
+      "type": "n8n-nodes-base.dataTable",
+      "typeVersion": 1.1,
+      "position": [
+        896,
+        512
+      ],
+      "parameters": {
+        "resource": "row",
+        "operation": "get",
+        "dataTableId": {
+          "__rl": true,
+          "mode": "id",
+          "value": "SELECT_MCTB_LEADS_TABLE",
+          "cachedResultName": "mctb_leads"
+        },
+        "matchType": "allConditions",
+        "filters": {
+          "conditions": [
+            {
+              "keyName": "phone",
+              "condition": "eq",
+              "keyValue": "={{ $('Call Details').first().json.phone }}"
+            }
+          ]
+        },
+        "returnAll": true
+      },
+      "executeOnce": true,
+      "alwaysOutputData": true
+    },
+    {
+      "id": "d83e57b7-41e3-4409-b523-53e1773465c6",
+      "name": "Plan Text Back",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1120,
+        512
+      ],
+      "parameters": {
+        "jsCode": "const call = $('Call Details').first().json;\nconst s = $('Load Settings').first().json;\nconst tz = s.timezone || 'America/Chicago';\nconst now = DateTime.now().setZone(tz);\nconst nowIso = now.toUTC().toISO();\nconst phone = String(call.phone || '').trim();\nconst stamp = now.toMillis().toString(36);\nconst makeId = p => p + stamp + Math.floor(Math.random() * 46656).toString(36);\nconst clean = r => {\n  const o = Object.assign({}, r);\n  delete o.id;\n  delete o.createdAt;\n  delete o.updatedAt;\n  return o;\n};\nconst toMin = v => {\n  const p = String(v).trim().split(':');\n  return Number(p[0]) * 60 + Number(p[1] || 0);\n};\nconst isOpen = t => {\n  if (t.weekday === 7) return false;\n  const range = String(t.weekday === 6 ? s.saturdayHours : s.weekdayHours).split('-');\n  if (range.length < 2) return false;\n  const m = t.hour * 60 + t.minute;\n  return m >= toMin(range[0]) && m < toMin(range[1]);\n};\n\nconst answered = ['completed', 'answered'].includes(String(call.status || '').toLowerCase());\nconst callRow = {\n  call_id: makeId('c'),\n  lead_id: null,\n  phone,\n  at: nowIso,\n  outcome: answered ? 'answered' : isOpen(now) ? 'missed' : 'after_hours',\n  ring_seconds: answered ? 0 : Number(s.ringSeconds) || 20,\n  duration: Number(call.duration) || 0,\n  text_back_seconds: null,\n  note: null\n};\nif (answered || !phone) return [{ json: { answered: true, send: false, call: callRow, lead: null, message: null } }];\n\nconst rows = $input.all().map(i => i.json).filter(r => r && r.lead_id && r.phone === phone);\nrows.sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());\nconst prev = rows[0] ? clean(rows[0]) : null;\n\nif (prev && prev.status === 'opted_out') {\n  callRow.lead_id = prev.lead_id;\n  callRow.note = 'Opted out, no text sent';\n  return [{ json: { answered: false, send: false, call: callRow, lead: null, message: null } }];\n}\n\nconst recent = prev && prev.status !== 'lost' && now.toMillis() - new Date(prev.last_at).getTime() < 3 * 86400000;\nconst lead = recent ? prev : {\n  lead_id: makeId('l'),\n  phone,\n  name: null,\n  status: 'texted',\n  source: 'call',\n  service: null,\n  issue: null,\n  urgency: null,\n  urgent: false,\n  zip: null,\n  address: null,\n  offered: '[]',\n  slot: null,\n  value: 0,\n  needs_call: false,\n  ack: true,\n  ai_paused: false,\n  follow_ups: 0,\n  text_back_seconds: null,\n  first_reply_at: null,\n  alerted_at: null,\n  booked_at: null,\n  booked_by: null,\n  reason: null,\n  summary: null,\n  created_at: nowIso,\n  last_at: nowIso,\n  call_count: 0\n};\nlead.call_count = (Number(lead.call_count) || 0) + 1;\ncallRow.lead_id = lead.lead_id;\n\nconst talking = recent && prev.first_reply_at && now.toMillis() - new Date(prev.last_at).getTime() < 2 * 3600000;\nif (talking) {\n  callRow.note = 'Already texting';\n  return [{ json: { answered: false, send: false, call: callRow, lead, message: null } }];\n}\n\nconst received = call.received_at ? new Date(call.received_at).getTime() : now.toMillis();\nconst secs = Math.max(1, Math.round((now.toMillis() - received) / 1000) + 1);\nconst template = isOpen(now) ? s.textBack : s.afterHours;\nconst text = String(template || '').split('{business}').join(s.shortName || s.businessName).split('{owner}').join(s.ownerName);\ncallRow.text_back_seconds = secs;\nif (lead.text_back_seconds === null || lead.text_back_seconds === undefined) lead.text_back_seconds = secs;\nif (lead.status === 'no_reply') lead.status = 'texted';\nlead.last_at = nowIso;\nconst message = { msg_id: makeId('m'), lead_id: lead.lead_id, phone, dir: 'out', author: 'ai', body: text, at: nowIso };\n\nreturn [{ json: { answered: false, send: !s.demoMode, call: callRow, lead, message, to: phone, from: s.businessPhone, text } }];\n"
+      }
+    },
+    {
+      "id": "47c18a8c-5eba-4575-88ca-1d5380510d39",
+      "name": "Call Row",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1344,
+        224
+      ],
+      "parameters": {
+        "jsCode": "return [{ json: $input.first().json.call }];\n"
+      }
+    },
+    {
+      "id": "0ccd02c2-2049-4284-9514-243e3e8b899b",
+      "name": "Save Call",
+      "type": "n8n-nodes-base.dataTable",
+      "typeVersion": 1.1,
+      "position": [
+        1568,
+        224
+      ],
+      "parameters": {
+        "resource": "row",
+        "operation": "insert",
+        "dataTableId": {
+          "__rl": true,
+          "mode": "id",
+          "value": "SELECT_MCTB_CALLS_TABLE",
+          "cachedResultName": "mctb_calls"
+        },
+        "columns": {
+          "mappingMode": "autoMapInputData",
+          "value": {},
+          "matchingColumns": [],
+          "schema": []
+        },
+        "options": {
+          "optimizeBulk": true
+        }
+      }
+    },
+    {
+      "id": "834116f6-2735-421b-8b93-df3c7d0ac07e",
+      "name": "Missed Call?",
+      "type": "n8n-nodes-base.filter",
+      "typeVersion": 2.3,
+      "position": [
+        1344,
+        416
+      ],
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "loose"
+          },
+          "conditions": [
+            {
+              "leftValue": "={{ !$json.answered && !!$json.lead }}",
+              "rightValue": "",
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      }
+    },
+    {
+      "id": "7254e4af-523a-4684-8f9b-812624f2beb0",
+      "name": "Lead Row",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1568,
+        416
+      ],
+      "parameters": {
+        "jsCode": "return [{ json: $input.first().json.lead }];\n"
+      }
+    },
+    {
+      "id": "c3d01a06-8b14-4a18-9681-db3976fb2cbd",
+      "name": "Save Lead",
+      "type": "n8n-nodes-base.dataTable",
+      "typeVersion": 1.1,
+      "position": [
+        1792,
+        416
+      ],
+      "parameters": {
+        "resource": "row",
+        "operation": "upsert",
+        "dataTableId": {
+          "__rl": true,
+          "mode": "id",
+          "value": "SELECT_MCTB_LEADS_TABLE",
+          "cachedResultName": "mctb_leads"
+        },
+        "matchType": "allConditions",
+        "filters": {
+          "conditions": [
+            {
+              "keyName": "lead_id",
+              "condition": "eq",
+              "keyValue": "={{ $json.lead_id }}"
+            }
+          ]
+        },
+        "columns": {
+          "mappingMode": "autoMapInputData",
+          "value": {},
+          "matchingColumns": [],
+          "schema": []
+        },
+        "options": {}
+      }
+    },
+    {
+      "id": "526e9401-8b27-44cc-85ee-3a69bf8ab9f2",
+      "name": "Text Back Needed?",
+      "type": "n8n-nodes-base.filter",
+      "typeVersion": 2.3,
+      "position": [
+        1344,
+        608
+      ],
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "loose"
+          },
+          "conditions": [
+            {
+              "leftValue": "={{ !!$json.message }}",
+              "rightValue": "",
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      }
+    },
+    {
+      "id": "08bcae63-8c59-4264-9e8a-79db85a4c1d2",
+      "name": "Text Row",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1568,
+        608
+      ],
+      "parameters": {
+        "jsCode": "return [{ json: $input.first().json.message }];\n"
+      }
+    },
+    {
+      "id": "571cc626-1d8c-47e0-874d-e03f1b9a7085",
+      "name": "Save Text",
+      "type": "n8n-nodes-base.dataTable",
+      "typeVersion": 1.1,
+      "position": [
+        1792,
+        608
+      ],
+      "parameters": {
+        "resource": "row",
+        "operation": "insert",
+        "dataTableId": {
+          "__rl": true,
+          "mode": "id",
+          "value": "SELECT_MCTB_MESSAGES_TABLE",
+          "cachedResultName": "mctb_messages"
+        },
+        "columns": {
+          "mappingMode": "autoMapInputData",
+          "value": {},
+          "matchingColumns": [],
+          "schema": []
+        },
+        "options": {
+          "optimizeBulk": true
+        }
+      }
+    },
+    {
+      "id": "8d570909-2eeb-4900-89c8-04053387e786",
+      "name": "Send for Real?",
+      "type": "n8n-nodes-base.filter",
+      "typeVersion": 2.3,
+      "position": [
+        1344,
+        800
+      ],
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "loose"
+          },
+          "conditions": [
+            {
+              "leftValue": "={{ !!$json.send }}",
+              "rightValue": "",
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      }
+    },
+    {
+      "id": "ad305a70-9e9b-49ca-b5fc-b41d82cb327b",
+      "name": "Send the Text Back",
+      "type": "n8n-nodes-base.twilio",
+      "typeVersion": 1,
+      "position": [
+        1568,
+        800
+      ],
+      "parameters": {
+        "resource": "sms",
+        "operation": "send",
+        "from": "={{ $json.from }}",
+        "to": "={{ $json.to }}",
+        "message": "={{ $json.text }}",
+        "options": {}
+      },
+      "retryOnFail": true,
+      "maxTries": 2,
+      "onError": "continueRegularOutput"
+    },
+    {
+      "id": "88fbab19-354a-4fa2-910d-d5b2f93155cd",
+      "name": "Sticky Note 82e73b5f",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        832,
+        800
+      ],
+      "parameters": {
+        "content": "## Missed call text-back\nTwilio forwards calls to the owner's mobile. If nobody answers within the ring time, the caller hears a short message and gets a text within seconds.\n\nIn demo mode the text is logged but not sent.",
+        "color": 7
+      }
+    }
+  ],
+  "connections": {
+    "Twilio Incoming Call": {
+      "main": [
+        [
+          {
+            "node": "Settings for Ringing",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Settings for Ringing": {
+      "main": [
+        [
+          {
+            "node": "Ring the Owner",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Twilio Call Ended": {
+      "main": [
+        [
+          {
+            "node": "Reply to Twilio",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Reply to Twilio": {
+      "main": [
+        [
+          {
+            "node": "Call Details",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Call Details": {
+      "main": [
+        [
+          {
+            "node": "Load Settings",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "When Called by the Dashboard": {
+      "main": [
+        [
+          {
+            "node": "Call Details",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Load Settings": {
+      "main": [
+        [
+          {
+            "node": "Find Caller",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Find Caller": {
+      "main": [
+        [
+          {
+            "node": "Plan Text Back",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Plan Text Back": {
+      "main": [
+        [
+          {
+            "node": "Call Row",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Missed Call?",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Text Back Needed?",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Send for Real?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Call Row": {
+      "main": [
+        [
+          {
+            "node": "Save Call",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Missed Call?": {
+      "main": [
+        [
+          {
+            "node": "Lead Row",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Lead Row": {
+      "main": [
+        [
+          {
+            "node": "Save Lead",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Text Back Needed?": {
+      "main": [
+        [
+          {
+            "node": "Text Row",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Text Row": {
+      "main": [
+        [
+          {
+            "node": "Save Text",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Send for Real?": {
+      "main": [
+        [
+          {
+            "node": "Send the Text Back",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "pinData": {}
+}

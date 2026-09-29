@@ -1,0 +1,747 @@
+{
+  "name": "Missed Call Text-Back 2 - SMS Conversation",
+  "nodes": [
+    {
+      "id": "961b13bc-2aa6-4f71-9eb3-0f90759b9653",
+      "name": "Twilio Incoming Text",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2.1,
+      "position": [
+        0,
+        192
+      ],
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "mctb-sms",
+        "responseMode": "responseNode",
+        "options": {
+          "allowedOrigins": "*"
+        }
+      },
+      "webhookId": "c7ea2f40-82de-4445-98fc-941debee2c94"
+    },
+    {
+      "id": "7e224054-4ceb-42ee-9c9e-feac9cdfd782",
+      "name": "Acknowledge Twilio",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.5,
+      "position": [
+        224,
+        192
+      ],
+      "parameters": {
+        "respondWith": "text",
+        "responseBody": "<Response></Response>",
+        "options": {
+          "responseHeaders": {
+            "entries": [
+              {
+                "name": "Content-Type",
+                "value": "text/xml"
+              }
+            ]
+          }
+        }
+      }
+    },
+    {
+      "id": "da2e0e67-c216-4b1b-a8e9-2778ffb4fc66",
+      "name": "Text Details",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        448,
+        288
+      ],
+      "parameters": {
+        "jsCode": "const j = $input.first().json;\nconst b = j.body && typeof j.body === 'object' ? j.body : null;\nreturn [{ json: {\n  phone: String(b ? b.From || '' : j.phone || '').trim(),\n  text: String(b ? b.Body || '' : j.text || '').trim(),\n  via: b ? 'twilio' : 'dashboard'\n} }];\n"
+      }
+    },
+    {
+      "id": "94b72635-f7af-4d95-99fc-56664dcc4361",
+      "name": "When Called by the Dashboard",
+      "type": "n8n-nodes-base.executeWorkflowTrigger",
+      "typeVersion": 1.2,
+      "position": [
+        224,
+        384
+      ],
+      "parameters": {
+        "inputSource": "workflowInputs",
+        "workflowInputs": {
+          "values": [
+            {
+              "name": "phone",
+              "type": "string"
+            },
+            {
+              "name": "text",
+              "type": "string"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "6b04e170-0235-461e-b304-b216c6f8e8ef",
+      "name": "Load Settings",
+      "type": "n8n-nodes-base.dataTable",
+      "typeVersion": 1.1,
+      "position": [
+        672,
+        288
+      ],
+      "parameters": {
+        "resource": "row",
+        "operation": "get",
+        "dataTableId": {
+          "__rl": true,
+          "mode": "id",
+          "value": "SELECT_MCTB_SETTINGS_TABLE",
+          "cachedResultName": "mctb_settings"
+        },
+        "limit": 1
+      },
+      "executeOnce": true
+    },
+    {
+      "id": "7910e147-7221-4372-8936-86ac515e7a63",
+      "name": "Find Texter",
+      "type": "n8n-nodes-base.dataTable",
+      "typeVersion": 1.1,
+      "position": [
+        896,
+        288
+      ],
+      "parameters": {
+        "resource": "row",
+        "operation": "get",
+        "dataTableId": {
+          "__rl": true,
+          "mode": "id",
+          "value": "SELECT_MCTB_LEADS_TABLE",
+          "cachedResultName": "mctb_leads"
+        },
+        "matchType": "allConditions",
+        "filters": {
+          "conditions": [
+            {
+              "keyName": "phone",
+              "condition": "eq",
+              "keyValue": "={{ $('Text Details').first().json.phone }}"
+            }
+          ]
+        },
+        "returnAll": true
+      },
+      "executeOnce": true,
+      "alwaysOutputData": true
+    },
+    {
+      "id": "28427d85-ad66-4c84-a785-0f7dc9b16f5f",
+      "name": "Load Booked Jobs",
+      "type": "n8n-nodes-base.dataTable",
+      "typeVersion": 1.1,
+      "position": [
+        1120,
+        288
+      ],
+      "parameters": {
+        "resource": "row",
+        "operation": "get",
+        "dataTableId": {
+          "__rl": true,
+          "mode": "id",
+          "value": "SELECT_MCTB_LEADS_TABLE",
+          "cachedResultName": "mctb_leads"
+        },
+        "matchType": "allConditions",
+        "filters": {
+          "conditions": [
+            {
+              "keyName": "status",
+              "condition": "eq",
+              "keyValue": "booked"
+            },
+            {
+              "keyName": "slot",
+              "condition": "gte",
+              "keyValue": "={{ $now.toISO() }}"
+            }
+          ]
+        },
+        "returnAll": true
+      },
+      "executeOnce": true,
+      "alwaysOutputData": true
+    },
+    {
+      "id": "022def12-d74b-4eca-b83d-80363eb8023e",
+      "name": "Load Thread",
+      "type": "n8n-nodes-base.dataTable",
+      "typeVersion": 1.1,
+      "position": [
+        1344,
+        288
+      ],
+      "parameters": {
+        "resource": "row",
+        "operation": "get",
+        "dataTableId": {
+          "__rl": true,
+          "mode": "id",
+          "value": "SELECT_MCTB_MESSAGES_TABLE",
+          "cachedResultName": "mctb_messages"
+        },
+        "matchType": "allConditions",
+        "filters": {
+          "conditions": [
+            {
+              "keyName": "phone",
+              "condition": "eq",
+              "keyValue": "={{ $('Text Details').first().json.phone }}"
+            },
+            {
+              "keyName": "at",
+              "condition": "gte",
+              "keyValue": "={{ $now.minus(14, 'days').toISO() }}"
+            }
+          ]
+        },
+        "returnAll": true
+      },
+      "executeOnce": true,
+      "alwaysOutputData": true
+    },
+    {
+      "id": "03e2b47c-b422-4731-b5d7-449d28fec47e",
+      "name": "Prepare Conversation",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1568,
+        288
+      ],
+      "parameters": {
+        "jsCode": "const msg = $('Text Details').first().json;\nconst s = $('Load Settings').first().json;\nconst NL = String.fromCharCode(10);\nconst tz = s.timezone || 'America/Chicago';\nconst now = DateTime.now().setZone(tz);\nconst nowIso = now.toUTC().toISO();\nconst stamp = now.toMillis().toString(36);\nconst makeId = p => p + stamp + Math.floor(Math.random() * 46656).toString(36);\nconst clean = r => {\n  const o = Object.assign({}, r);\n  delete o.id;\n  delete o.createdAt;\n  delete o.updatedAt;\n  return o;\n};\nconst ms = v => (v ? new Date(v).getTime() : 0);\n\nlet services = [];\ntry {\n  services = typeof s.services === 'string' ? JSON.parse(s.services) : s.services || [];\n} catch (e) {\n  services = [];\n}\nif (!Array.isArray(services) || !services.length) {\n  services = [\n    { key: 'leak', name: 'Burst or leaking pipe', from: 149, typical: 480, urgent: true },\n    { key: 'drain', name: 'Blocked drain', from: 129, typical: 260 },\n    { key: 'heater', name: 'Water heater repair', from: 189, typical: 690 },\n    { key: 'heating', name: 'No heat or furnace repair', from: 159, typical: 380 },\n    { key: 'toilet', name: 'Toilet repair', from: 99, typical: 190 },\n    { key: 'faucet', name: 'Faucet or sink repair', from: 99, typical: 170 },\n    { key: 'install', name: 'New fixture install', from: 0, typical: 650 },\n    { key: 'gas', name: 'Gas leak', from: 0, typical: 350, urgent: true },\n    { key: 'other', name: 'General plumbing', from: 119, typical: 240 }\n  ];\n}\n\nconst phone = String(msg.phone || '').trim();\nconst text = String(msg.text || '').trim().slice(0, 600);\nconst mine = $('Find Texter').all().map(i => i.json).filter(r => r && r.lead_id && r.phone === phone);\nmine.sort((a, b) => ms(b.created_at) - ms(a.created_at));\nlet lead = mine[0] && now.toMillis() - ms(mine[0].last_at) < 14 * 86400000 ? clean(mine[0]) : null;\nif (!lead) {\n  lead = {\n    lead_id: makeId('l'), phone, name: null, status: 'chatting', source: 'sms', service: null, issue: null, urgency: null,\n    urgent: false, zip: null, address: null, offered: '[]', slot: null, value: 0, needs_call: false, ack: true, ai_paused: false,\n    follow_ups: 0, text_back_seconds: null, first_reply_at: null, alerted_at: null, booked_at: null, booked_by: null,\n    reason: null, summary: null, created_at: nowIso, last_at: nowIso, call_count: 0\n  };\n}\n\nconst history = $('Load Thread').all().map(i => i.json).filter(r => r && r.lead_id === lead.lead_id);\nhistory.sort((a, b) => ms(a.at) - ms(b.at));\nconst inbound = { msg_id: makeId('m'), lead_id: lead.lead_id, phone, dir: 'in', author: 'customer', body: text, at: nowIso };\nlead.last_at = nowIso;\nif (!lead.first_reply_at) lead.first_reply_at = nowIso;\n\nconst word = text.toLowerCase().split('.').join('').split('!').join('').trim();\nlet mode = 'ai';\nlet fixed = [];\nif (['stop', 'stopall', 'unsubscribe', 'cancel', 'end', 'quit'].includes(word)) {\n  lead.status = 'opted_out';\n  mode = 'fixed';\n  fixed = [\"You're unsubscribed and won't get more texts from us. Reply START if you change your mind.\"];\n} else if (lead.status === 'opted_out') {\n  if (['start', 'unstop', 'yes'].includes(word)) {\n    lead.status = 'chatting';\n    mode = 'fixed';\n    fixed = [\"You're back in. What can we help with?\"];\n  } else {\n    mode = 'silent';\n  }\n} else if (!s.aiEnabled || lead.ai_paused) {\n  mode = 'owner';\n  lead.needs_call = true;\n  lead.ack = false;\n  if (lead.status === 'texted' || lead.status === 'no_reply') lead.status = 'chatting';\n} else if (lead.status === 'texted' || lead.status === 'no_reply') {\n  lead.status = 'chatting';\n}\n\nconst toMin = v => {\n  const p = String(v).trim().split(':');\n  return Number(p[0]) * 60 + Number(p[1] || 0);\n};\nconst taken = {};\n$('Load Booked Jobs').all().map(i => i.json).forEach(r => {\n  if (!r || !r.slot || r.urgent || r.lead_id === lead.lead_id || r.status !== 'booked') return;\n  const k = ms(r.slot);\n  taken[k] = (taken[k] || 0) + 1;\n});\nconst times = String(s.slotTimes || '').split(',').map(x => x.trim()).filter(Boolean).map(toMin).sort((a, b) => a - b);\nconst cap = Math.max(1, Number(s.vans) || 1);\nconst slots = [];\nfor (let i = 0; i < 14 && slots.length < 12; i++) {\n  const day = now.startOf('day').plus({ days: i });\n  if (day.weekday === 7) continue;\n  const range = String(day.weekday === 6 ? s.saturdayHours : s.weekdayHours).split('-');\n  if (range.length < 2) continue;\n  const open = toMin(range[0]);\n  const close = toMin(range[1]);\n  for (const m of times) {\n    if (m < open || m + 60 > close) continue;\n    const t = day.plus({ minutes: m });\n    if (t.toMillis() < now.toMillis() + 90 * 60000) continue;\n    if ((taken[t.toMillis()] || 0) >= cap) continue;\n    const rel = i === 0 ? 'today' : i === 1 ? 'tomorrow' : t.toFormat('cccc');\n    slots.push({ id: 'S' + (slots.length + 1), iso: t.toUTC().toISO(), label: rel + ' (' + t.toFormat('ccc LLL d') + ') at ' + t.toFormat('h:mm a') });\n    if (slots.length >= 12) break;\n  }\n}\n\nlet offered = [];\ntry {\n  offered = JSON.parse(lead.offered || '[]');\n} catch (e) {\n  offered = [];\n}\nconst offeredIds = slots.filter(x => offered.includes(x.iso)).map(x => x.id);\nconst known = {\n  name: lead.name, service: lead.service, issue: lead.issue, urgency: lead.urgency, zip: lead.zip, address: lead.address,\n  status: lead.status, emergency_already_flagged: !!lead.urgent, slots_already_offered: offeredIds,\n  booked_for: lead.status === 'booked' && lead.slot ? DateTime.fromMillis(ms(lead.slot)).setZone(tz).toFormat('cccc LLL d, h:mm a') : null\n};\n\nconst svcLines = services.map(v => '- ' + v.key + ': ' + v.name + (v.from ? ', visits from ' + (s.currency || '$') + v.from : ', free quote') + (v.urgent ? ', always an emergency' : '')).join(NL);\nconst system = [\n  'You are the text assistant for ' + s.businessName + ', a plumbing and heating company serving ' + s.areaLabel + '. ' + s.ownerName + ' is the owner.',\n  'A customer called, nobody could pick up, and the business texted them back automatically. You now carry on the conversation by SMS on behalf of the business.',\n  '',\n  'Your job, in order: find out what the problem is and how urgent it is, get the ZIP code of the job, offer open times, get the name for the booking, then confirm the booking.',\n  '',\n  'How to write:',\n  '- Sound like a friendly person at a local trade business. Plain words, short sentences, no emojis.',\n  '- Keep each text under 300 characters. Send one text, or two only when giving safety advice.',\n  '- Ask one question at a time.',\n  '- Only quote prices from the service list, and say the price is confirmed before work starts.',\n  '- Only offer times from the open slots list, at most three at once. Never invent a time.',\n  '- Never promise anything else on behalf of the business.',\n  '',\n  'Emergencies (burst pipe, flooding, water through a ceiling, sewage backing up, a gas smell): say ' + s.ownerName + ' has been alerted and will call within 10 minutes, give one safety step (turn off the main water valve; for gas, leave the house and call 911 or the gas company from outside), and ask for the address. Once you have the address or ZIP, use action dispatch and say ' + s.ownerName + ' is on the way.',\n  'If they ask for a call or a real person, say ' + s.ownerName + ' will call back soon and use action call_back.',\n  'If they have sorted it or gone elsewhere, close politely and use action lost.',\n  'If their ZIP code is outside the area, say so kindly and use action out_of_area.',\n  '',\n  'Reply with JSON only, no other text, in this shape:',\n  '{\"replies\": [\"text\"], \"lead\": {\"name\": null, \"service\": null, \"issue\": null, \"urgency\": null, \"zip\": null, \"address\": null, \"summary\": null}, \"offer_slot_ids\": [], \"book_slot_id\": null, \"action\": \"none\"}',\n  'service is one of the service keys. urgency is emergency, soon or routine. action is none, offer, book, dispatch, call_back, lost or out_of_area.',\n  'Use action offer with offer_slot_ids when you offer times. Use action book with book_slot_id only when the customer has picked a time and you know their name. Keep fields you already know.'\n].join(NL);\n\nconst transcript = history.concat([inbound]).filter(m => m.dir !== 'note').slice(-30)\n  .map(m => (m.dir === 'in' ? 'Customer' : m.author === 'owner' ? s.ownerName : 'Business') + ': ' + m.body).join(NL);\nconst user = [\n  'Services:', svcLines, '',\n  'Opening hours: Monday to Friday ' + s.weekdayHours + ', Saturday ' + s.saturdayHours + '. Emergencies any time.',\n  'ZIP codes we cover (prefixes): ' + s.serviceZips,\n  'Right now it is ' + now.toFormat('cccc LLL d, h:mm a') + '.', '',\n  'Open slots:', slots.length ? slots.map(x => x.id + ': ' + x.label).join(NL) : 'None in the next two weeks. Offer a call back instead.', '',\n  'What we know so far: ' + JSON.stringify(known), '',\n  'Conversation so far:', transcript, '',\n  'Write the next reply as JSON.'\n].join(NL);\n\nreturn [{ json: {\n  mode, fixed, lead, inbound, slots, services, phone,\n  system_prompt: system, user_prompt: user,\n  model: s.claudeModel || 'claude-opus-5',\n  demo: !!s.demoMode, owner_name: s.ownerName, owner_phone: s.ownerPhone, business_phone: s.businessPhone\n} }];\n"
+      }
+    },
+    {
+      "id": "60f2fb2a-63d1-4351-b562-4693e888732c",
+      "name": "AI Should Reply?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        1792,
+        288
+      ],
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict"
+          },
+          "conditions": [
+            {
+              "leftValue": "={{ $json.mode }}",
+              "rightValue": "ai",
+              "operator": {
+                "type": "string",
+                "operation": "equals"
+              }
+            }
+          ],
+          "combinator": "and"
+        }
+      }
+    },
+    {
+      "id": "586c6a53-c545-42e9-8cbd-1f39dbe75236",
+      "name": "Claude Writes the Reply",
+      "type": "@n8n/n8n-nodes-langchain.anthropic",
+      "typeVersion": 1,
+      "position": [
+        2016,
+        224
+      ],
+      "parameters": {
+        "resource": "text",
+        "operation": "message",
+        "modelId": {
+          "__rl": true,
+          "mode": "id",
+          "value": "={{ $('Prepare Conversation').first().json.model }}"
+        },
+        "messages": {
+          "values": [
+            {
+              "content": "={{ $json.user_prompt }}",
+              "role": "user"
+            }
+          ]
+        },
+        "simplify": true,
+        "options": {
+          "system": "={{ $json.system_prompt }}",
+          "maxTokens": 1200
+        }
+      },
+      "retryOnFail": true,
+      "maxTries": 2
+    },
+    {
+      "id": "d72ea10a-aa9e-4280-b175-cecc493cc19c",
+      "name": "Finish Conversation",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        2240,
+        288
+      ],
+      "parameters": {
+        "jsCode": "const p = $('Prepare Conversation').first().json;\nconst lead = Object.assign({}, p.lead);\nconst nowMs = Date.now();\nconst iso = t => new Date(t).toISOString();\nconst stamp = nowMs.toString(36);\nconst makeId = x => x + stamp + Math.floor(Math.random() * 46656).toString(36);\nconst who = lead.name || lead.phone;\nconst svcOf = key => p.services.find(v => v.key === key) || p.services.find(v => v.key === 'other') || { typical: 240, name: 'General plumbing' };\nconst rows = [p.inbound];\nconst notes = [];\nlet replies = [];\nlet alert = null;\n\nif (p.mode === 'fixed') replies = p.fixed;\nif (p.mode === 'owner') alert = 'New text from ' + who + ': ' + p.inbound.body;\n\nif (p.mode === 'ai') {\n  const r = $input.first() ? $input.first().json : {};\n  let raw = '';\n  if (typeof r.merged_response === 'string') raw = r.merged_response;\n  else if (Array.isArray(r.content)) raw = r.content.filter(c => c && c.type === 'text').map(c => c.text).join('');\n  else if (typeof r.content === 'string') raw = r.content;\n  else if (typeof r.text === 'string') raw = r.text;\n  let parsed = null;\n  try {\n    parsed = JSON.parse(raw.slice(raw.indexOf('{'), raw.lastIndexOf('}') + 1));\n  } catch (e) {\n    parsed = null;\n  }\n  if (!parsed || !Array.isArray(parsed.replies)) {\n    replies = ['Thanks, got it. ' + p.owner_name + ' will get back to you shortly.'];\n    lead.needs_call = true;\n    lead.ack = false;\n    alert = 'The AI could not answer ' + who + '. Please text them back.';\n  } else {\n    const f = parsed.lead || {};\n    ['name', 'issue', 'zip', 'address', 'summary'].forEach(k => {\n      if (f[k]) lead[k] = String(f[k]).slice(0, 140);\n    });\n    if (f.service && p.services.some(v => v.key === f.service)) lead.service = f.service;\n    if (['emergency', 'soon', 'routine'].includes(f.urgency)) lead.urgency = f.urgency;\n    if (lead.service && !lead.issue) lead.issue = svcOf(lead.service).name;\n    const svc = svcOf(lead.service);\n    const emergency = lead.urgency === 'emergency' || (lead.service && svc.urgent);\n    if (emergency && !lead.urgent) {\n      lead.urgent = true;\n      lead.ack = false;\n      alert = 'Emergency: ' + (lead.issue || 'urgent job') + ' for ' + (lead.name ? lead.name + ' on ' + lead.phone : lead.phone);\n    }\n    if (emergency && lead.status !== 'booked') lead.status = 'urgent';\n    const byId = id => p.slots.find(x => x.id === id);\n    const act = String(parsed.action || 'none');\n    if (act === 'offer') {\n      const picked = (parsed.offer_slot_ids || []).map(byId).filter(Boolean).map(x => x.iso);\n      if (picked.length) lead.offered = JSON.stringify(picked);\n    }\n    if (act === 'book') {\n      const sl = byId(parsed.book_slot_id);\n      if (sl && lead.name) {\n        lead.slot = sl.iso;\n        lead.status = 'booked';\n        lead.booked_at = iso(nowMs);\n        lead.booked_by = 'ai';\n        lead.value = Number(svc.typical) || 0;\n        lead.needs_call = false;\n        notes.push('Booked by AI: ' + (lead.issue || svc.name) + ', ' + sl.label);\n      }\n    }\n    if (act === 'dispatch') {\n      lead.status = 'booked';\n      lead.urgent = true;\n      lead.slot = iso(nowMs + 45 * 60000);\n      lead.booked_at = iso(nowMs);\n      lead.booked_by = 'ai';\n      lead.value = Number(svc.typical) || 0;\n      notes.push('Emergency visit on the way');\n      alert = 'Head to ' + (lead.address || lead.zip || 'the customer') + ' for ' + who + ': ' + (lead.issue || 'emergency') + '. Their number is ' + lead.phone + '.';\n    }\n    if (act === 'call_back') {\n      lead.needs_call = true;\n      lead.ack = false;\n      alert = who + ' asked for a call back' + (lead.issue ? ' about ' + String(lead.issue).toLowerCase() : '') + '. Number: ' + lead.phone;\n    }\n    if (act === 'lost' || act === 'out_of_area') {\n      lead.status = 'lost';\n      lead.reason = act === 'lost' ? 'Went elsewhere or fixed it' : 'Outside the service area';\n      lead.slot = null;\n    }\n    replies = parsed.replies.map(x => String(x || '').trim()).filter(Boolean).slice(0, 2).map(x => x.slice(0, 320));\n  }\n}\n\nlet t = nowMs + 500;\nreplies.forEach(body => {\n  rows.push({ msg_id: makeId('m'), lead_id: lead.lead_id, phone: lead.phone, dir: 'out', author: 'ai', body, at: iso(t) });\n  t += 1000;\n});\nif (alert) {\n  lead.alerted_at = lead.alerted_at || iso(t);\n  rows.push({ msg_id: makeId('n'), lead_id: lead.lead_id, phone: lead.phone, dir: 'note', author: 'system', body: p.owner_name + ' alerted by text: ' + alert, at: iso(t) });\n  t += 500;\n}\nnotes.forEach(body => {\n  rows.push({ msg_id: makeId('n'), lead_id: lead.lead_id, phone: lead.phone, dir: 'note', author: 'system', body, at: iso(t) });\n  t += 500;\n});\nif (replies.length) lead.last_at = iso(t);\n\nreturn [{ json: {\n  lead, messages: rows, replies, alert,\n  send: !p.demo, phone: lead.phone, from: p.business_phone, owner_phone: p.owner_phone\n} }];\n"
+      }
+    },
+    {
+      "id": "b61d5068-eefd-429c-9d52-0b445b6ce1df",
+      "name": "Lead Row",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        2464,
+        0
+      ],
+      "parameters": {
+        "jsCode": "return [{ json: $input.first().json.lead }];\n"
+      }
+    },
+    {
+      "id": "046a525e-a8a6-4822-ab3c-950a3be44525",
+      "name": "Save Lead",
+      "type": "n8n-nodes-base.dataTable",
+      "typeVersion": 1.1,
+      "position": [
+        2688,
+        0
+      ],
+      "parameters": {
+        "resource": "row",
+        "operation": "upsert",
+        "dataTableId": {
+          "__rl": true,
+          "mode": "id",
+          "value": "SELECT_MCTB_LEADS_TABLE",
+          "cachedResultName": "mctb_leads"
+        },
+        "matchType": "allConditions",
+        "filters": {
+          "conditions": [
+            {
+              "keyName": "lead_id",
+              "condition": "eq",
+              "keyValue": "={{ $json.lead_id }}"
+            }
+          ]
+        },
+        "columns": {
+          "mappingMode": "autoMapInputData",
+          "value": {},
+          "matchingColumns": [],
+          "schema": []
+        },
+        "options": {}
+      }
+    },
+    {
+      "id": "943e80f0-ca8f-48b4-84bc-b4f9178677a3",
+      "name": "Message Rows",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        2464,
+        192
+      ],
+      "parameters": {
+        "jsCode": "return $input.first().json.messages.map(m => ({ json: m }));\n"
+      }
+    },
+    {
+      "id": "3f5636bc-30f5-4820-bf21-09185e87214d",
+      "name": "Save Messages",
+      "type": "n8n-nodes-base.dataTable",
+      "typeVersion": 1.1,
+      "position": [
+        2688,
+        192
+      ],
+      "parameters": {
+        "resource": "row",
+        "operation": "insert",
+        "dataTableId": {
+          "__rl": true,
+          "mode": "id",
+          "value": "SELECT_MCTB_MESSAGES_TABLE",
+          "cachedResultName": "mctb_messages"
+        },
+        "columns": {
+          "mappingMode": "autoMapInputData",
+          "value": {},
+          "matchingColumns": [],
+          "schema": []
+        },
+        "options": {
+          "optimizeBulk": true
+        }
+      }
+    },
+    {
+      "id": "65c8fd98-2277-4881-ae80-a4de0bc278a1",
+      "name": "Text the Customer?",
+      "type": "n8n-nodes-base.filter",
+      "typeVersion": 2.3,
+      "position": [
+        2464,
+        384
+      ],
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "loose"
+          },
+          "conditions": [
+            {
+              "leftValue": "={{ $json.send && $json.replies.length > 0 }}",
+              "rightValue": "",
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      }
+    },
+    {
+      "id": "c1dd03ff-5333-40b6-8f2e-ff96d9a1f852",
+      "name": "One Text per Reply",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        2688,
+        384
+      ],
+      "parameters": {
+        "jsCode": "const j = $input.first().json;\nreturn j.replies.map(text => ({ json: { to: j.phone, from: j.from, text } }));\n"
+      }
+    },
+    {
+      "id": "babd7b32-2efb-4e5c-a9f6-7e8532b4d7fa",
+      "name": "Send the Reply",
+      "type": "n8n-nodes-base.twilio",
+      "typeVersion": 1,
+      "position": [
+        2912,
+        384
+      ],
+      "parameters": {
+        "resource": "sms",
+        "operation": "send",
+        "from": "={{ $json.from }}",
+        "to": "={{ $json.to }}",
+        "message": "={{ $json.text }}",
+        "options": {}
+      },
+      "retryOnFail": true,
+      "maxTries": 2,
+      "onError": "continueRegularOutput"
+    },
+    {
+      "id": "63c711bd-276b-46de-b973-b050b99b931a",
+      "name": "Alert the Owner?",
+      "type": "n8n-nodes-base.filter",
+      "typeVersion": 2.3,
+      "position": [
+        2464,
+        576
+      ],
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "loose"
+          },
+          "conditions": [
+            {
+              "leftValue": "={{ $json.send && !!$json.alert }}",
+              "rightValue": "",
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      }
+    },
+    {
+      "id": "f988939f-7119-4595-b07d-275f6ed5a97a",
+      "name": "Text the Owner",
+      "type": "n8n-nodes-base.twilio",
+      "typeVersion": 1,
+      "position": [
+        2688,
+        576
+      ],
+      "parameters": {
+        "resource": "sms",
+        "operation": "send",
+        "from": "={{ $json.from }}",
+        "to": "={{ $json.owner_phone }}",
+        "message": "=Missed Call Text-Back: {{ $json.alert }}",
+        "options": {}
+      },
+      "retryOnFail": true,
+      "maxTries": 2,
+      "onError": "continueRegularOutput"
+    },
+    {
+      "id": "e7b45691-f7a2-42d2-b749-77d4e00e402e",
+      "name": "Sticky Note 922403ce",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        1392,
+        576
+      ],
+      "parameters": {
+        "content": "## Texting with the customer\nEvery reply the customer sends lands here. STOP and START are handled by rules. Otherwise Claude reads the whole thread, the price list and the open slots, and answers with a short text plus what it learned about the job.\n\nEmergencies and call-back requests text the owner straight away. In demo mode nothing is sent.",
+        "color": 7
+      }
+    }
+  ],
+  "connections": {
+    "Twilio Incoming Text": {
+      "main": [
+        [
+          {
+            "node": "Acknowledge Twilio",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Acknowledge Twilio": {
+      "main": [
+        [
+          {
+            "node": "Text Details",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Text Details": {
+      "main": [
+        [
+          {
+            "node": "Load Settings",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "When Called by the Dashboard": {
+      "main": [
+        [
+          {
+            "node": "Text Details",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Load Settings": {
+      "main": [
+        [
+          {
+            "node": "Find Texter",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Find Texter": {
+      "main": [
+        [
+          {
+            "node": "Load Booked Jobs",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Load Booked Jobs": {
+      "main": [
+        [
+          {
+            "node": "Load Thread",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Load Thread": {
+      "main": [
+        [
+          {
+            "node": "Prepare Conversation",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Prepare Conversation": {
+      "main": [
+        [
+          {
+            "node": "AI Should Reply?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "AI Should Reply?": {
+      "main": [
+        [
+          {
+            "node": "Claude Writes the Reply",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Finish Conversation",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Claude Writes the Reply": {
+      "main": [
+        [
+          {
+            "node": "Finish Conversation",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Finish Conversation": {
+      "main": [
+        [
+          {
+            "node": "Lead Row",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Message Rows",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Text the Customer?",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Alert the Owner?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Lead Row": {
+      "main": [
+        [
+          {
+            "node": "Save Lead",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Message Rows": {
+      "main": [
+        [
+          {
+            "node": "Save Messages",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Text the Customer?": {
+      "main": [
+        [
+          {
+            "node": "One Text per Reply",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "One Text per Reply": {
+      "main": [
+        [
+          {
+            "node": "Send the Reply",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Alert the Owner?": {
+      "main": [
+        [
+          {
+            "node": "Text the Owner",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "pinData": {}
+}

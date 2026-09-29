@@ -1,0 +1,106 @@
+{
+  "name": "Missed Call Text-Back 9 - Error Alert",
+  "nodes": [
+    {
+      "id": "d3d97af9-696b-4796-8195-b6fa64ceef58",
+      "name": "When a Workflow Fails",
+      "type": "n8n-nodes-base.errorTrigger",
+      "typeVersion": 1,
+      "position": [
+        0,
+        0
+      ],
+      "parameters": {}
+    },
+    {
+      "id": "a3c09742-d9a9-4b18-a62a-2b05fb1c8b3c",
+      "name": "Load Settings",
+      "type": "n8n-nodes-base.dataTable",
+      "typeVersion": 1.1,
+      "position": [
+        224,
+        0
+      ],
+      "parameters": {
+        "resource": "row",
+        "operation": "get",
+        "dataTableId": {
+          "__rl": true,
+          "mode": "id",
+          "value": "SELECT_MCTB_SETTINGS_TABLE",
+          "cachedResultName": "mctb_settings"
+        },
+        "limit": 1
+      },
+      "executeOnce": true
+    },
+    {
+      "id": "c8ca4906-fa68-4a08-ad48-ee5b0544e7ea",
+      "name": "Email the Owner",
+      "type": "n8n-nodes-base.gmail",
+      "typeVersion": 2.2,
+      "position": [
+        448,
+        0
+      ],
+      "parameters": {
+        "sendTo": "={{ $json.ownerEmail }}",
+        "subject": "=Missed Call Text-Back: {{ $('When a Workflow Fails').first().json.workflow.name }} failed",
+        "emailType": "text",
+        "message": "=Hi {{ $json.ownerName }},\n\nThe workflow \"{{ $('When a Workflow Fails').first().json.workflow.name }}\" stopped at \"{{ $('When a Workflow Fails').first().json.execution.lastNodeExecuted }}\".\n\nError: {{ $('When a Workflow Fails').first().json.execution.error.message }}\n\nOpen the run: {{ $('When a Workflow Fails').first().json.execution.url }}\n\nMissed calls may not be getting texted back until this is fixed.",
+        "options": {
+          "appendAttribution": false
+        }
+      },
+      "webhookId": "993547ab-5d65-41ce-989a-14d069e5a804",
+      "credentials": {
+        "gmailOAuth2": {
+          "id": "",
+          "name": "Gmail account"
+        }
+      }
+    },
+    {
+      "id": "c088cc6e-e4a4-4749-aac6-e6410890eefd",
+      "name": "Sticky Note 18250681",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        160,
+        0
+      ],
+      "parameters": {
+        "content": "## Error alert\nSet this as the error workflow in workflows 1 to 5. It emails the owner when any of them fails, so missed calls never go quietly unanswered.",
+        "color": 7
+      }
+    }
+  ],
+  "connections": {
+    "When a Workflow Fails": {
+      "main": [
+        [
+          {
+            "node": "Load Settings",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Load Settings": {
+      "main": [
+        [
+          {
+            "node": "Email the Owner",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "pinData": {}
+}

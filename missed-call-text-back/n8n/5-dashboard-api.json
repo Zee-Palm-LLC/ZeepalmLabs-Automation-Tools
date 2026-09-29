@@ -1,0 +1,1221 @@
+{
+  "name": "Missed Call Text-Back 5 - Dashboard API",
+  "nodes": [
+    {
+      "id": "bbc734ed-3dc9-4275-b1be-fb71f88c5b7b",
+      "name": "Dashboard Data Request",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2.1,
+      "position": [
+        0,
+        0
+      ],
+      "parameters": {
+        "httpMethod": "GET",
+        "path": "mctb-api",
+        "responseMode": "responseNode",
+        "options": {
+          "allowedOrigins": "*"
+        }
+      },
+      "webhookId": "95bcefd0-a1de-4436-ab0e-12de0ad8e7b7"
+    },
+    {
+      "id": "efad8983-da96-4fed-b851-29ff95766b4d",
+      "name": "Load Settings",
+      "type": "n8n-nodes-base.dataTable",
+      "typeVersion": 1.1,
+      "position": [
+        224,
+        0
+      ],
+      "parameters": {
+        "resource": "row",
+        "operation": "get",
+        "dataTableId": {
+          "__rl": true,
+          "mode": "id",
+          "value": "SELECT_MCTB_SETTINGS_TABLE",
+          "cachedResultName": "mctb_settings"
+        },
+        "limit": 1
+      },
+      "executeOnce": true
+    },
+    {
+      "id": "0d6d1949-d257-474d-a68d-c76aac3d06ec",
+      "name": "Recent Leads",
+      "type": "n8n-nodes-base.dataTable",
+      "typeVersion": 1.1,
+      "position": [
+        448,
+        0
+      ],
+      "parameters": {
+        "resource": "row",
+        "operation": "get",
+        "dataTableId": {
+          "__rl": true,
+          "mode": "id",
+          "value": "SELECT_MCTB_LEADS_TABLE",
+          "cachedResultName": "mctb_leads"
+        },
+        "matchType": "allConditions",
+        "filters": {
+          "conditions": [
+            {
+              "keyName": "last_at",
+              "condition": "gte",
+              "keyValue": "={{ $now.minus(35, 'days').toISO() }}"
+            }
+          ]
+        },
+        "returnAll": true
+      },
+      "executeOnce": true,
+      "alwaysOutputData": true
+    },
+    {
+      "id": "ab56559f-6fd9-4b27-ade1-329563b0dc55",
+      "name": "Recent Calls",
+      "type": "n8n-nodes-base.dataTable",
+      "typeVersion": 1.1,
+      "position": [
+        672,
+        0
+      ],
+      "parameters": {
+        "resource": "row",
+        "operation": "get",
+        "dataTableId": {
+          "__rl": true,
+          "mode": "id",
+          "value": "SELECT_MCTB_CALLS_TABLE",
+          "cachedResultName": "mctb_calls"
+        },
+        "matchType": "allConditions",
+        "filters": {
+          "conditions": [
+            {
+              "keyName": "at",
+              "condition": "gte",
+              "keyValue": "={{ $now.minus(31, 'days').toISO() }}"
+            }
+          ]
+        },
+        "returnAll": true
+      },
+      "executeOnce": true,
+      "alwaysOutputData": true
+    },
+    {
+      "id": "a884f91c-87ad-4b1c-8756-067f9ce2a10f",
+      "name": "Recent Messages",
+      "type": "n8n-nodes-base.dataTable",
+      "typeVersion": 1.1,
+      "position": [
+        896,
+        0
+      ],
+      "parameters": {
+        "resource": "row",
+        "operation": "get",
+        "dataTableId": {
+          "__rl": true,
+          "mode": "id",
+          "value": "SELECT_MCTB_MESSAGES_TABLE",
+          "cachedResultName": "mctb_messages"
+        },
+        "matchType": "allConditions",
+        "filters": {
+          "conditions": [
+            {
+              "keyName": "at",
+              "condition": "gte",
+              "keyValue": "={{ $now.minus(35, 'days').toISO() }}"
+            }
+          ]
+        },
+        "returnAll": true
+      },
+      "executeOnce": true,
+      "alwaysOutputData": true
+    },
+    {
+      "id": "6ec99f00-2788-42b5-85e7-12d5bb800624",
+      "name": "Build Dashboard Data",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1120,
+        0
+      ],
+      "parameters": {
+        "jsCode": "const raw = $('Load Settings').first().json;\nconst tz = raw.timezone || 'America/Chicago';\nconst nowMs = Date.now();\nconst ms = v => (v ? new Date(v).getTime() : 0);\nconst iso = v => (v ? new Date(v).toISOString() : null);\nconst num = v => (v === null || v === undefined || v === '' ? null : Number(v));\n\nconst settings = Object.assign({}, raw);\ndelete settings.id;\ndelete settings.createdAt;\ndelete settings.updatedAt;\ndelete settings.settings_key;\ntry {\n  settings.services = typeof raw.services === 'string' ? JSON.parse(raw.services) : raw.services || [];\n} catch (e) {\n  settings.services = [];\n}\n['vans', 'ringSeconds', 'followUpMinutes', 'finalFollowUpHours'].forEach(k => {\n  settings[k] = Number(settings[k]) || 0;\n});\nsettings.aiEnabled = !!settings.aiEnabled;\nsettings.demoMode = !!settings.demoMode;\n\nconst leads = $('Recent Leads').all().map(i => i.json).filter(r => r && r.lead_id).map(r => {\n  let offered = [];\n  try {\n    offered = JSON.parse(r.offered || '[]');\n  } catch (e) {\n    offered = [];\n  }\n  return {\n    id: r.lead_id, phone: r.phone, name: r.name || null, status: r.status, source: r.source, service: r.service || null,\n    issue: r.issue || null, urgency: r.urgency || null, urgent: !!r.urgent, zip: r.zip || null, address: r.address || null,\n    offered, slot: iso(r.slot), value: Number(r.value) || 0, needsCall: !!r.needs_call, ack: r.ack !== false,\n    aiPaused: !!r.ai_paused, followUps: Number(r.follow_ups) || 0, textBackSeconds: num(r.text_back_seconds),\n    firstReplyAt: iso(r.first_reply_at), alertedAt: iso(r.alerted_at), bookedAt: iso(r.booked_at), bookedBy: r.booked_by || null,\n    reason: r.reason || null, summary: r.summary || null, createdAt: iso(r.created_at), lastAt: iso(r.last_at), callCount: Number(r.call_count) || 0\n  };\n});\nconst calls = $('Recent Calls').all().map(i => i.json).filter(r => r && r.call_id).map(r => ({\n  id: r.call_id, leadId: r.lead_id || null, phone: r.phone, at: iso(r.at), outcome: r.outcome, ringSeconds: Number(r.ring_seconds) || 0,\n  duration: Number(r.duration) || 0, textBackSeconds: num(r.text_back_seconds), note: r.note || null\n}));\nconst messages = $('Recent Messages').all().map(i => i.json).filter(r => r && r.msg_id).map(r => ({\n  id: r.msg_id, leadId: r.lead_id, phone: r.phone, dir: r.dir, author: r.author, body: r.body, at: iso(r.at)\n}));\nleads.sort((a, b) => ms(b.lastAt) - ms(a.lastAt));\ncalls.sort((a, b) => ms(b.at) - ms(a.at));\nmessages.sort((a, b) => ms(a.at) - ms(b.at));\n\nconst since = nowMs - 30 * 86400000;\nconst inWindow = calls.filter(c => ms(c.at) >= since);\nconst missed = inWindow.filter(c => c.outcome !== 'answered');\nconst fromCalls = leads.filter(l => ms(l.createdAt) >= since && l.source === 'call');\nconst texted = fromCalls.filter(l => l.textBackSeconds !== null);\nconst replied = fromCalls.filter(l => l.firstReplyAt);\nconst booked = fromCalls.filter(l => l.status === 'booked');\nconst byStatus = {};\nfromCalls.forEach(l => {\n  byStatus[l.status] = (byStatus[l.status] || 0) + 1;\n});\nconst heat = [0, 1, 2, 3, 4, 5, 6].map(() => new Array(24).fill(0));\nmissed.forEach(c => {\n  const d = DateTime.fromMillis(ms(c.at)).setZone(tz);\n  heat[d.weekday % 7][d.hour] += 1;\n});\nconst avg = texted.length ? texted.reduce((a, l) => a + l.textBackSeconds, 0) / texted.length : 0;\n\nconst stats = {\n  calls: inWindow.length,\n  answered: inWindow.length - missed.length,\n  missed: missed.length,\n  afterHours: missed.filter(c => c.outcome === 'after_hours').length,\n  texted: texted.length,\n  replied: replied.length,\n  booked: booked.length,\n  bookedByAi: booked.filter(l => l.bookedBy === 'ai').length,\n  urgent: fromCalls.filter(l => l.urgent).length,\n  recovered: booked.reduce((a, l) => a + l.value, 0),\n  avgTextBack: Math.round(avg * 10) / 10,\n  replyRate: texted.length ? replied.length / texted.length : 0,\n  bookRate: missed.length ? booked.length / missed.length : 0,\n  byStatus,\n  heat,\n  needsYou: leads.filter(l => (l.urgent || l.needsCall) && !l.ack && !['lost', 'opted_out'].includes(l.status)).length,\n  open: leads.filter(l => ['texted', 'chatting', 'urgent'].includes(l.status)).length\n};\n\nreturn [{ json: { settings, leads, calls, messages, stats, now: new Date(nowMs).toISOString() } }];\n"
+      }
+    },
+    {
+      "id": "e2726a1e-9c5c-436e-a116-56949b41eb19",
+      "name": "Send Dashboard Data",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.5,
+      "position": [
+        1344,
+        0
+      ],
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ $json }}",
+        "options": {}
+      }
+    },
+    {
+      "id": "e7faa6cf-cee1-4c04-8837-4ee95e3a9448",
+      "name": "Dashboard Action Request",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2.1,
+      "position": [
+        0,
+        944
+      ],
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "mctb-action",
+        "responseMode": "responseNode",
+        "options": {
+          "allowedOrigins": "*"
+        }
+      },
+      "webhookId": "4bb83eba-cc77-4fb2-86e3-545f33d3598e"
+    },
+    {
+      "id": "14851dad-b507-40c8-819e-2ba0cbfc91f1",
+      "name": "Read Action",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        224,
+        944
+      ],
+      "parameters": {
+        "jsCode": "const q = Object.assign({}, $input.first().json.query || {});\nreturn [{ json: {\n  action: String(q.action || ''),\n  lead: q.lead || null,\n  phone: q.phone || null,\n  text: q.body || null,\n  paused: q.paused,\n  status: q.status || null,\n  params: q\n} }];\n"
+      }
+    },
+    {
+      "id": "18d99a10-2d23-4268-b24b-5d21f447ef08",
+      "name": "Settings for Action",
+      "type": "n8n-nodes-base.dataTable",
+      "typeVersion": 1.1,
+      "position": [
+        448,
+        944
+      ],
+      "parameters": {
+        "resource": "row",
+        "operation": "get",
+        "dataTableId": {
+          "__rl": true,
+          "mode": "id",
+          "value": "SELECT_MCTB_SETTINGS_TABLE",
+          "cachedResultName": "mctb_settings"
+        },
+        "limit": 1
+      },
+      "executeOnce": true
+    },
+    {
+      "id": "7640c438-7a0d-48d7-b4cf-09ca88fb2f75",
+      "name": "Which Action?",
+      "type": "n8n-nodes-base.switch",
+      "typeVersion": 3.2,
+      "position": [
+        672,
+        864
+      ],
+      "parameters": {
+        "rules": {
+          "values": [
+            {
+              "outputKey": "call",
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "strict"
+                },
+                "conditions": [
+                  {
+                    "leftValue": "={{ $('Read Action').first().json.action }}",
+                    "rightValue": "call",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals"
+                    }
+                  }
+                ],
+                "combinator": "and"
+              }
+            },
+            {
+              "outputKey": "sms",
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "strict"
+                },
+                "conditions": [
+                  {
+                    "leftValue": "={{ $('Read Action').first().json.action }}",
+                    "rightValue": "sms",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals"
+                    }
+                  }
+                ],
+                "combinator": "and"
+              }
+            },
+            {
+              "outputKey": "send",
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "strict"
+                },
+                "conditions": [
+                  {
+                    "leftValue": "={{ $('Read Action').first().json.action }}",
+                    "rightValue": "send",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals"
+                    }
+                  }
+                ],
+                "combinator": "and"
+              }
+            },
+            {
+              "outputKey": "change",
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "strict"
+                },
+                "conditions": [
+                  {
+                    "leftValue": "={{ $('Read Action').first().json.action }}",
+                    "rightValue": "^(pause|ack|status)$",
+                    "operator": {
+                      "type": "string",
+                      "operation": "regex"
+                    }
+                  }
+                ],
+                "combinator": "and"
+              }
+            },
+            {
+              "outputKey": "settings",
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "strict"
+                },
+                "conditions": [
+                  {
+                    "leftValue": "={{ $('Read Action').first().json.action }}",
+                    "rightValue": "settings",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals"
+                    }
+                  }
+                ],
+                "combinator": "and"
+              }
+            },
+            {
+              "outputKey": "reset",
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "strict"
+                },
+                "conditions": [
+                  {
+                    "leftValue": "={{ $('Read Action').first().json.action }}",
+                    "rightValue": "reset",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals"
+                    }
+                  }
+                ],
+                "combinator": "and"
+              }
+            }
+          ]
+        },
+        "options": {
+          "fallbackOutput": "extra",
+          "renameFallbackOutput": "Unknown"
+        }
+      }
+    },
+    {
+      "id": "adedb0b0-bd86-4f13-8f7c-f2c17d04a467",
+      "name": "Run Missed Call",
+      "type": "n8n-nodes-base.executeWorkflow",
+      "typeVersion": 1.3,
+      "position": [
+        896,
+        224
+      ],
+      "parameters": {
+        "mode": "once",
+        "source": "database",
+        "workflowId": {
+          "__rl": true,
+          "mode": "id",
+          "value": "SELECT_WORKFLOW_MISSED_CALL_TEXT_BACK_1_MISSED_CALL",
+          "cachedResultName": "Missed Call Text-Back 1 - Missed Call"
+        },
+        "workflowInputs": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "phone": "={{ $('Read Action').first().json.phone }}"
+          },
+          "matchingColumns": [],
+          "schema": [
+            {
+              "id": "phone",
+              "displayName": "phone",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "canBeUsedToMatch": true,
+              "type": "string"
+            }
+          ],
+          "attemptToConvertTypes": false,
+          "convertFieldsToString": true
+        },
+        "options": {
+          "waitForSubWorkflow": true
+        }
+      },
+      "executeOnce": true
+    },
+    {
+      "id": "1005c552-cf4c-451b-b00b-9acf6992c6b4",
+      "name": "Find Caller Lead",
+      "type": "n8n-nodes-base.dataTable",
+      "typeVersion": 1.1,
+      "position": [
+        1120,
+        320
+      ],
+      "parameters": {
+        "resource": "row",
+        "operation": "get",
+        "dataTableId": {
+          "__rl": true,
+          "mode": "id",
+          "value": "SELECT_MCTB_LEADS_TABLE",
+          "cachedResultName": "mctb_leads"
+        },
+        "matchType": "allConditions",
+        "filters": {
+          "conditions": [
+            {
+              "keyName": "phone",
+              "condition": "eq",
+              "keyValue": "={{ $('Read Action').first().json.phone }}"
+            }
+          ]
+        },
+        "returnAll": true
+      },
+      "executeOnce": true,
+      "alwaysOutputData": true
+    },
+    {
+      "id": "6dc9e808-da9c-4872-936d-2099a971185d",
+      "name": "Run SMS Conversation",
+      "type": "n8n-nodes-base.executeWorkflow",
+      "typeVersion": 1.3,
+      "position": [
+        896,
+        416
+      ],
+      "parameters": {
+        "mode": "once",
+        "source": "database",
+        "workflowId": {
+          "__rl": true,
+          "mode": "id",
+          "value": "SELECT_WORKFLOW_MISSED_CALL_TEXT_BACK_2_SMS_CONVERSATION",
+          "cachedResultName": "Missed Call Text-Back 2 - SMS Conversation"
+        },
+        "workflowInputs": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "phone": "={{ $('Read Action').first().json.phone }}",
+            "text": "={{ $('Read Action').first().json.text }}"
+          },
+          "matchingColumns": [],
+          "schema": [
+            {
+              "id": "phone",
+              "displayName": "phone",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "canBeUsedToMatch": true,
+              "type": "string"
+            },
+            {
+              "id": "text",
+              "displayName": "text",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "canBeUsedToMatch": true,
+              "type": "string"
+            }
+          ],
+          "attemptToConvertTypes": false,
+          "convertFieldsToString": true
+        },
+        "options": {
+          "waitForSubWorkflow": true
+        }
+      },
+      "executeOnce": true
+    },
+    {
+      "id": "72703363-30b9-46b4-8e7f-edb1aa630ab3",
+      "name": "Find Lead by ID",
+      "type": "n8n-nodes-base.dataTable",
+      "typeVersion": 1.1,
+      "position": [
+        896,
+        736
+      ],
+      "parameters": {
+        "resource": "row",
+        "operation": "get",
+        "dataTableId": {
+          "__rl": true,
+          "mode": "id",
+          "value": "SELECT_MCTB_LEADS_TABLE",
+          "cachedResultName": "mctb_leads"
+        },
+        "matchType": "allConditions",
+        "filters": {
+          "conditions": [
+            {
+              "keyName": "lead_id",
+              "condition": "eq",
+              "keyValue": "={{ $('Read Action').first().json.lead }}"
+            }
+          ]
+        },
+        "returnAll": true
+      },
+      "executeOnce": true,
+      "alwaysOutputData": true
+    },
+    {
+      "id": "7c961d94-4106-4a9c-9c5b-544fa73a5460",
+      "name": "Lead Change",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1120,
+        1136
+      ],
+      "parameters": {
+        "jsCode": "const a = $('Read Action').first().json;\nif (!a.lead) throw new Error('Missing lead');\nconst patch = { lead_id: a.lead };\nif (a.action === 'pause') {\n  patch.ai_paused = String(a.paused) === 'true';\n  if (!patch.ai_paused) patch.needs_call = false;\n}\nif (a.action === 'ack') {\n  patch.ack = true;\n  patch.needs_call = false;\n}\nif (a.action === 'status') {\n  if (!['texted', 'chatting', 'urgent', 'booked', 'no_reply', 'lost', 'opted_out'].includes(a.status)) throw new Error('Unknown status');\n  patch.status = a.status;\n  if (a.status !== 'booked') patch.slot = null;\n}\nreturn [{ json: patch }];\n"
+      }
+    },
+    {
+      "id": "1b2dd9f5-3bf2-4497-948f-fd3824fbb910",
+      "name": "Update Lead",
+      "type": "n8n-nodes-base.dataTable",
+      "typeVersion": 1.1,
+      "position": [
+        1344,
+        704
+      ],
+      "parameters": {
+        "resource": "row",
+        "operation": "update",
+        "dataTableId": {
+          "__rl": true,
+          "mode": "id",
+          "value": "SELECT_MCTB_LEADS_TABLE",
+          "cachedResultName": "mctb_leads"
+        },
+        "matchType": "allConditions",
+        "filters": {
+          "conditions": [
+            {
+              "keyName": "lead_id",
+              "condition": "eq",
+              "keyValue": "={{ $json.lead_id }}"
+            }
+          ]
+        },
+        "columns": {
+          "mappingMode": "autoMapInputData",
+          "value": {},
+          "matchingColumns": [],
+          "schema": []
+        },
+        "options": {}
+      }
+    },
+    {
+      "id": "408e9ca8-b1cf-436d-bba7-04c0deb4caa5",
+      "name": "Merge Settings",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1120,
+        1328
+      ],
+      "parameters": {
+        "jsCode": "const q = $('Read Action').first().json.params;\nconst cur = $('Settings for Action').first().json || {};\nconst NUMBERS = ['vans', 'ringSeconds', 'followUpMinutes', 'finalFollowUpHours'];\nconst FLAGS = ['aiEnabled', 'demoMode'];\nconst TEXT = ['businessName', 'shortName', 'ownerName', 'ownerPhone', 'ownerEmail', 'businessPhone', 'currency', 'timezone', 'areaLabel', 'serviceZips', 'weekdayHours', 'saturdayHours', 'slotTimes', 'textBack', 'afterHours', 'claudeModel', 'services'];\nconst row = { settings_key: 'main' };\nNUMBERS.concat(FLAGS, TEXT).forEach(k => {\n  if (cur[k] !== undefined) row[k] = cur[k];\n  if (q[k] === undefined) return;\n  if (NUMBERS.includes(k)) row[k] = Number(q[k]) || 0;\n  else if (FLAGS.includes(k)) row[k] = String(q[k]) === 'true';\n  else row[k] = String(q[k]).slice(0, 4000);\n});\nif (row.services) JSON.parse(row.services);\nreturn [{ json: row }];\n"
+      }
+    },
+    {
+      "id": "54063f39-254d-4274-9dbd-90c49b07c40f",
+      "name": "Save Settings",
+      "type": "n8n-nodes-base.dataTable",
+      "typeVersion": 1.1,
+      "position": [
+        1344,
+        1328
+      ],
+      "parameters": {
+        "resource": "row",
+        "operation": "upsert",
+        "dataTableId": {
+          "__rl": true,
+          "mode": "id",
+          "value": "SELECT_MCTB_SETTINGS_TABLE",
+          "cachedResultName": "mctb_settings"
+        },
+        "matchType": "allConditions",
+        "filters": {
+          "conditions": [
+            {
+              "keyName": "settings_key",
+              "condition": "eq",
+              "keyValue": "={{ $json.settings_key }}"
+            }
+          ]
+        },
+        "columns": {
+          "mappingMode": "autoMapInputData",
+          "value": {},
+          "matchingColumns": [],
+          "schema": []
+        },
+        "options": {}
+      }
+    },
+    {
+      "id": "e3ad0d52-9b92-411a-8165-f9ab7543b791",
+      "name": "Demo Mode On?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        1120,
+        1616
+      ],
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "loose"
+          },
+          "conditions": [
+            {
+              "leftValue": "={{ $('Settings for Action').first().json.demoMode }}",
+              "rightValue": "",
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        }
+      }
+    },
+    {
+      "id": "47b16731-0916-473b-8eb3-2408aa777450",
+      "name": "Rebuild Demo Business",
+      "type": "n8n-nodes-base.executeWorkflow",
+      "typeVersion": 1.3,
+      "position": [
+        1344,
+        1520
+      ],
+      "parameters": {
+        "mode": "once",
+        "source": "database",
+        "workflowId": {
+          "__rl": true,
+          "mode": "id",
+          "value": "SELECT_WORKFLOW_MISSED_CALL_TEXT_BACK_0_DEMO_BUSINESS",
+          "cachedResultName": "Missed Call Text-Back 0 - Demo Business"
+        },
+        "options": {
+          "waitForSubWorkflow": true
+        }
+      },
+      "executeOnce": true
+    },
+    {
+      "id": "2f85a6cc-af84-4289-b8c9-dfe7a1ec046a",
+      "name": "Reply OK",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.5,
+      "position": [
+        1568,
+        1072
+      ],
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "{\"ok\": true}",
+        "options": {}
+      },
+      "executeOnce": true
+    },
+    {
+      "id": "e142222a-aa43-4b7e-ad6e-f0858e5515b5",
+      "name": "Reply Not Allowed",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.5,
+      "position": [
+        1344,
+        1712
+      ],
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "{\"ok\": false, \"message\": \"Reset only works in demo mode\"}",
+        "options": {
+          "responseCode": 403
+        }
+      }
+    },
+    {
+      "id": "5b2d3633-6a37-43d7-9918-9c7c2737e718",
+      "name": "Reply Unknown Action",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.5,
+      "position": [
+        896,
+        1760
+      ],
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "{\"ok\": false, \"message\": \"Unknown action\"}",
+        "options": {
+          "responseCode": 400
+        }
+      }
+    },
+    {
+      "id": "22fc0c46-d0c7-4a28-9e48-63554e321ed2",
+      "name": "Pick Lead",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1344,
+        320
+      ],
+      "parameters": {
+        "jsCode": "const phone = $('Read Action').first().json.phone;\nconst rows = $input.all().map(i => i.json).filter(r => r && r.lead_id && r.phone === phone);\nrows.sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());\nreturn [{ json: { ok: true, leadId: rows[0] ? rows[0].lead_id : null } }];\n"
+      }
+    },
+    {
+      "id": "864fca7a-e344-4d5b-8508-34b4c45550fc",
+      "name": "Reply with Lead",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.5,
+      "position": [
+        1568,
+        320
+      ],
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ $json }}",
+        "options": {}
+      }
+    },
+    {
+      "id": "58c5db9b-0784-4f37-a599-8f22622a4470",
+      "name": "Owner Takes Over",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1120,
+        608
+      ],
+      "parameters": {
+        "jsCode": "const lead = $input.first().json;\nif (!lead || !lead.lead_id) throw new Error('That conversation no longer exists');\nreturn [{ json: {\n  lead_id: lead.lead_id,\n  ai_paused: true,\n  status: lead.status === 'texted' ? 'chatting' : lead.status,\n  last_at: new Date().toISOString()\n} }];\n"
+      }
+    },
+    {
+      "id": "9759e705-4e70-4545-93ce-480713035e49",
+      "name": "Owner Text Row",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1120,
+        896
+      ],
+      "parameters": {
+        "jsCode": "const a = $('Read Action').first().json;\nconst lead = $input.first().json;\nif (!lead || !lead.lead_id) throw new Error('That conversation no longer exists');\nif (lead.status === 'opted_out') throw new Error('This person opted out of texts');\nconst body = String(a.text || '').trim().slice(0, 480);\nif (!body) throw new Error('The message is empty');\nreturn [{ json: {\n  msg_id: 'm' + Date.now().toString(36) + Math.floor(Math.random() * 46656).toString(36),\n  lead_id: lead.lead_id,\n  phone: lead.phone,\n  dir: 'out',\n  author: 'owner',\n  body,\n  at: new Date().toISOString()\n} }];\n"
+      }
+    },
+    {
+      "id": "d9ffc596-43fb-400c-ae86-5afec162c4dd",
+      "name": "Save Owner Text",
+      "type": "n8n-nodes-base.dataTable",
+      "typeVersion": 1.1,
+      "position": [
+        1344,
+        896
+      ],
+      "parameters": {
+        "resource": "row",
+        "operation": "insert",
+        "dataTableId": {
+          "__rl": true,
+          "mode": "id",
+          "value": "SELECT_MCTB_MESSAGES_TABLE",
+          "cachedResultName": "mctb_messages"
+        },
+        "columns": {
+          "mappingMode": "autoMapInputData",
+          "value": {},
+          "matchingColumns": [],
+          "schema": []
+        },
+        "options": {
+          "optimizeBulk": true
+        }
+      }
+    },
+    {
+      "id": "0b5468ca-b211-4bef-a2b5-4a22578fb105",
+      "name": "Send for Real?",
+      "type": "n8n-nodes-base.filter",
+      "typeVersion": 2.3,
+      "position": [
+        1344,
+        1088
+      ],
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "loose"
+          },
+          "conditions": [
+            {
+              "leftValue": "={{ !$('Settings for Action').first().json.demoMode }}",
+              "rightValue": "",
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      }
+    },
+    {
+      "id": "a69640c7-6bc7-4f3b-b7b7-8666a985f778",
+      "name": "Send Owner Text",
+      "type": "n8n-nodes-base.twilio",
+      "typeVersion": 1,
+      "position": [
+        1568,
+        1360
+      ],
+      "parameters": {
+        "resource": "sms",
+        "operation": "send",
+        "from": "={{ $('Settings for Action').first().json.businessPhone }}",
+        "to": "={{ $json.phone }}",
+        "message": "={{ $json.body }}",
+        "options": {}
+      },
+      "retryOnFail": true,
+      "maxTries": 2,
+      "onError": "continueRegularOutput"
+    },
+    {
+      "id": "5a5a0f5a-44e0-48be-af9b-8263c2de392d",
+      "name": "Sticky Note 2ad5e5b1",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        720,
+        1760
+      ],
+      "parameters": {
+        "content": "## Dashboard API\nGET /mctb-api returns settings, leads, calls, messages and 30-day stats for the React dashboard.\n\nPOST /mctb-action runs the dashboard's buttons: call and sms simulate a customer through workflows 1 and 2, send lets the owner text a customer, pause, ack and status change a lead, settings saves settings, reset reloads the demo business.\n\nAdd Header Auth to both webhooks before using real customer data.",
+        "color": 7
+      }
+    }
+  ],
+  "connections": {
+    "Dashboard Data Request": {
+      "main": [
+        [
+          {
+            "node": "Load Settings",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Load Settings": {
+      "main": [
+        [
+          {
+            "node": "Recent Leads",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Recent Leads": {
+      "main": [
+        [
+          {
+            "node": "Recent Calls",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Recent Calls": {
+      "main": [
+        [
+          {
+            "node": "Recent Messages",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Recent Messages": {
+      "main": [
+        [
+          {
+            "node": "Build Dashboard Data",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Build Dashboard Data": {
+      "main": [
+        [
+          {
+            "node": "Send Dashboard Data",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Dashboard Action Request": {
+      "main": [
+        [
+          {
+            "node": "Read Action",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Read Action": {
+      "main": [
+        [
+          {
+            "node": "Settings for Action",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Settings for Action": {
+      "main": [
+        [
+          {
+            "node": "Which Action?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Which Action?": {
+      "main": [
+        [
+          {
+            "node": "Run Missed Call",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Run SMS Conversation",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Find Lead by ID",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Lead Change",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Merge Settings",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Demo Mode On?",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Reply Unknown Action",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Run Missed Call": {
+      "main": [
+        [
+          {
+            "node": "Find Caller Lead",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Find Caller Lead": {
+      "main": [
+        [
+          {
+            "node": "Pick Lead",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Run SMS Conversation": {
+      "main": [
+        [
+          {
+            "node": "Find Caller Lead",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Find Lead by ID": {
+      "main": [
+        [
+          {
+            "node": "Owner Takes Over",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Owner Text Row",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Lead Change": {
+      "main": [
+        [
+          {
+            "node": "Update Lead",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Update Lead": {
+      "main": [
+        [
+          {
+            "node": "Reply OK",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Merge Settings": {
+      "main": [
+        [
+          {
+            "node": "Save Settings",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Save Settings": {
+      "main": [
+        [
+          {
+            "node": "Reply OK",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Demo Mode On?": {
+      "main": [
+        [
+          {
+            "node": "Rebuild Demo Business",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Reply Not Allowed",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Rebuild Demo Business": {
+      "main": [
+        [
+          {
+            "node": "Reply OK",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Pick Lead": {
+      "main": [
+        [
+          {
+            "node": "Reply with Lead",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Owner Takes Over": {
+      "main": [
+        [
+          {
+            "node": "Update Lead",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Owner Text Row": {
+      "main": [
+        [
+          {
+            "node": "Save Owner Text",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Send for Real?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Send for Real?": {
+      "main": [
+        [
+          {
+            "node": "Send Owner Text",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "pinData": {}
+}
