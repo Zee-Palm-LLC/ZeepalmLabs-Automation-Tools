@@ -1,7 +1,7 @@
 import { useRef } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import { useDesk } from '../state/DeskProvider.jsx';
-import { StatusPill } from './bits.jsx';
+import { StatusPill } from './ui.jsx';
 import { phone, slotLabel, money, serviceOf } from '../lib/format.js';
 
 const URGENCY = { emergency: 'Emergency', soon: 'Soon', routine: 'Routine' };

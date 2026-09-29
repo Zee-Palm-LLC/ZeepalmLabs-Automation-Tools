@@ -58,7 +58,7 @@ export async function demoAction(action, p = {}) {
     return { ok: true };
   }
   if (action === 'reset') {
-    state = buildDemo(now);
+    state = buildDemo(now, s.settings);
     return { ok: true };
   }
   throw new Error('Unknown action ' + action);

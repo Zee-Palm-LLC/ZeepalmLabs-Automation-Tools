@@ -49,6 +49,14 @@ export function duration(sec) {
   return Math.floor(s / 60) + 'm ' + String(s % 60).padStart(2, '0') + 's';
 }
 
+export function minutes(m) {
+  const v = Math.max(1, Math.round(m));
+  if (v < 60) return v + ' min';
+  if (v < 1440) return Math.round(v / 60) + ' h';
+  const d = Math.round(v / 1440);
+  return d + (d === 1 ? ' day' : ' days');
+}
+
 export function gap(ms) {
   const s = Math.max(0, Math.round(ms / 1000));
   if (s < 60) return '+' + s + 's';

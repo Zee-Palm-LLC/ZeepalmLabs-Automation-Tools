@@ -20,11 +20,14 @@ STOP and START are handled by fixed rules, not the AI, and opted-out numbers are
 
 | Page | What it does |
 |---|---|
-| Live | The demo phone, the step-by-step timeline of the rescue, the job ticket the AI fills in, the last 30 days in numbers and every missed call as a tile |
-| Inbox | Every conversation, filterable. Read the thread, take over from the AI, text the customer yourself, hand it back, or mark it handled |
-| Calls | When calls get missed by day and hour, and the full call log with text-back times |
-| Jobs | Jobs that started as a missed call, coming up and booked in the last 30 days |
-| Settings | Business details, hours and slots, service area, text-back messages, follow-up timing, prices and the AI switch |
+| Dashboard | Money won back, KPI cards with trends, missed calls against jobs won per day, the rescue funnel, a live activity feed, who needs a call, revenue by service and every missed call as a tile |
+| Live demo | The demo phone with the step-by-step rescue timeline and the job ticket the AI fills in, plus what runs behind it. Also opens as a full-screen overlay from anywhere with **Call demo line** |
+| Inbox | Every conversation with filters and search. Read the thread with call and booking events, take over from the AI, text the customer, hand it back, change the status or mark it handled |
+| Calls | Missed calls by weekday and hour, and a sortable, searchable, paged call log |
+| Jobs | Upcoming jobs by day, who booked the work, value by service and the booking log |
+| Settings | Business details, hours and slots, service area, text-back messages with live previews, prices, automation switches and demo reset |
+
+Across the app: a command menu (Ctrl or Cmd and K) to jump to any page, action or customer, notifications for anything that needs the owner, dark and light themes, and a collapsible sidebar that becomes a slide-out menu on phones.
 
 ## Two ways to run it
 
@@ -64,8 +67,10 @@ Deploy to Vercel as a Vite project with **Root Directory** `missed-call-text-bac
 ## Folder
 
 - `src/pages`: one file per page
-- `src/components`: the phone, the rescue timeline, the job ticket and shared pieces
+- `src/components`: the app shell and command menu (`Shell.jsx`), the chart library (`charts.jsx`), UI building blocks (`ui.jsx`), the phone, the live stage, the rescue timeline and the job ticket
 - `src/state/DeskProvider.jsx`: data loading, the demo call and every action
+- `src/state/UiProvider.jsx`: theme, sidebar, command menu and overlay state
+- `src/lib/metrics.js`: daily series, trends, funnel and activity feed derived from the data
 - `src/lib/api.js`: switches between the n8n webhooks and the in-browser demo
 - `src/demo/`: the scripted stand-in for Claude, the slot finder and the demo business
 - `scripts/og.mjs`: draws the link preview image at build time
