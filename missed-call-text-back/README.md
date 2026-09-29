@@ -4,7 +4,7 @@ Every missed call gets a text back within seconds. The AI replies to the custome
 
 The demo business is BrightFlow Plumbing & Heating, a two-van plumber in Austin. Plumbers miss calls all day because they're on jobs, and a caller who gets no answer usually rings the next plumber on Google.
 
-- **Live demo:** [missed-call-text-back.vercel.app](https://missed-call-text-back.vercel.app). Call the demo line on the phone and let it ring out. Everything runs in your browser, so nothing is sent.
+- **Live demo:** [zeepalm-missed-call-text-back.vercel.app](https://zeepalm-missed-call-text-back.vercel.app). Call the demo line on the phone and let it ring out. Everything runs in your browser, so nothing is sent.
 
 ## How it works
 
