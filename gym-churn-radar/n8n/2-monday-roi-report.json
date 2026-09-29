@@ -1,0 +1,344 @@
+{
+  "name": "Gym Churn Radar 2 - Monday ROI Report",
+  "nodes": [
+    {
+      "id": "28e4f91b-f968-4a61-8810-59d691aff1c4",
+      "name": "Every Monday at 8am",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.4,
+      "position": [
+        0,
+        300
+      ],
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "weeks",
+              "weeksInterval": 1,
+              "triggerAtDay": [
+                1
+              ],
+              "triggerAtHour": 8,
+              "triggerAtMinute": 0
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "f8b3d7ea-0468-49b6-82b1-521d51bb4ec8",
+      "name": "Gym Settings",
+      "type": "n8n-nodes-base.dataTable",
+      "typeVersion": 1.1,
+      "position": [
+        240,
+        300
+      ],
+      "parameters": {
+        "resource": "row",
+        "operation": "get",
+        "dataTableId": {
+          "__rl": true,
+          "mode": "id",
+          "value": "SELECT_CHURN_SETTINGS_TABLE",
+          "cachedResultName": "churn_settings"
+        },
+        "returnAll": false,
+        "limit": 1
+      }
+    },
+    {
+      "id": "da7ee8fc-8404-43cf-8fa5-d5ee71d2f24a",
+      "name": "Get All Members",
+      "type": "n8n-nodes-base.dataTable",
+      "typeVersion": 1.1,
+      "position": [
+        480,
+        300
+      ],
+      "parameters": {
+        "resource": "row",
+        "operation": "get",
+        "dataTableId": {
+          "__rl": true,
+          "mode": "id",
+          "value": "SELECT_CHURN_MEMBERS_TABLE",
+          "cachedResultName": "churn_members"
+        },
+        "returnAll": true
+      },
+      "executeOnce": true
+    },
+    {
+      "id": "bd738679-9549-4d6d-9c9d-806af32888bd",
+      "name": "Get Outreach Log",
+      "type": "n8n-nodes-base.dataTable",
+      "typeVersion": 1.1,
+      "position": [
+        720,
+        300
+      ],
+      "parameters": {
+        "resource": "row",
+        "operation": "get",
+        "dataTableId": {
+          "__rl": true,
+          "mode": "id",
+          "value": "SELECT_CHURN_OUTREACH_TABLE",
+          "cachedResultName": "churn_outreach"
+        },
+        "matchType": "allConditions",
+        "filters": {
+          "conditions": [
+            {
+              "keyName": "sent_at",
+              "condition": "gte",
+              "keyValue": "={{ $now.minus(90, \"days\").toISO() }}"
+            }
+          ]
+        },
+        "returnAll": true
+      },
+      "executeOnce": true
+    },
+    {
+      "id": "edc1a96c-1143-4638-9a11-96e413e89e9e",
+      "name": "Get Visits Since First Outreach",
+      "type": "n8n-nodes-base.dataTable",
+      "typeVersion": 1.1,
+      "position": [
+        960,
+        300
+      ],
+      "parameters": {
+        "resource": "row",
+        "operation": "get",
+        "dataTableId": {
+          "__rl": true,
+          "mode": "id",
+          "value": "SELECT_CHURN_CHECKINS_TABLE",
+          "cachedResultName": "churn_checkins"
+        },
+        "matchType": "allConditions",
+        "filters": {
+          "conditions": [
+            {
+              "keyName": "checked_in_at",
+              "condition": "gte",
+              "keyValue": "={{ $now.minus(90, \"days\").toISO() }}"
+            }
+          ]
+        },
+        "returnAll": true
+      },
+      "executeOnce": true
+    },
+    {
+      "id": "04207bc6-b105-4735-a096-7038913ebe56",
+      "name": "Calculate Weekly ROI",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1200,
+        300
+      ],
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "jsCode": "const s = $('Gym Settings').first().json;\nconst NL = String.fromCharCode(10);\nconst DAY = 86400000;\nconst now = Date.now();\nconst members = $('Get All Members').all().map(i => i.json).filter(m => m.member_ref);\nconst outreach = $('Get Outreach Log').all().map(i => i.json).filter(o => o.member_ref && o.sent_at);\nconst visitsByRef = {};\nlet visitsThisWeek = 0;\nlet visitsLastWeek = 0;\nfor (const item of $input.all()) {\n  const v = item.json;\n  if (!v.member_ref || !v.checked_in_at) continue;\n  const t = new Date(v.checked_in_at).getTime();\n  if (isNaN(t) || t > now) continue;\n  if (now - t <= 7 * DAY) visitsThisWeek += 1;\n  else if (now - t <= 14 * DAY) visitsLastWeek += 1;\n  if (!visitsByRef[v.member_ref]) visitsByRef[v.member_ref] = [];\n  visitsByRef[v.member_ref].push(t);\n}\nfor (const k of Object.keys(visitsByRef)) visitsByRef[k].sort((a, b) => a - b);\nconst memberByRef = {};\nfor (const m of members) memberByRef[m.member_ref] = m;\nconst active = members.filter(m => String(m.status || 'active').toLowerCase() === 'active');\nconst high = active.filter(m => m.risk_level === 'high').sort((a, b) => Number(b.monthly_fee || 0) - Number(a.monthly_fee || 0) || Number(b.risk_score || 0) - Number(a.risk_score || 0));\nconst medium = active.filter(m => m.risk_level === 'medium');\nconst fee = ref => Number((memberByRef[ref] && memberByRef[ref].monthly_fee) || 0);\nconst revenueAtRisk = high.concat(medium).reduce((a, m) => a + Number(m.monthly_fee || 0), 0);\nconst latestByRef = {};\nfor (const o of outreach) {\n  const t = new Date(o.sent_at).getTime();\n  if (isNaN(t)) continue;\n  if (!latestByRef[o.member_ref] || latestByRef[o.member_ref].t < t) latestByRef[o.member_ref] = { t, o };\n}\nconst wins = [];\nlet decided = 0;\nfor (const ref of Object.keys(latestByRef)) {\n  const sent = latestByRef[ref].t;\n  const back = (visitsByRef[ref] || []).find(t => t > sent && t <= sent + 14 * DAY);\n  if (back) {\n    decided += 1;\n    const m = memberByRef[ref] || {};\n    wins.push({ ref, name: m.name || latestByRef[ref].o.name, fee: fee(ref), sentAt: sent, backAt: back, daysToReturn: Math.max(0, Math.round((back - sent) / DAY)) });\n  } else if (now - sent >= 14 * DAY) {\n    decided += 1;\n  }\n}\nwins.sort((a, b) => b.backAt - a.backAt);\nconst winsThisWeek = wins.filter(w => now - w.backAt <= 7 * DAY);\nconst wins30 = wins.filter(w => now - w.backAt <= 30 * DAY);\nconst revenueWonBack30 = wins30.reduce((a, w) => a + w.fee, 0);\nconst sentThisWeek = outreach.filter(o => now - new Date(o.sent_at).getTime() <= 7 * DAY).length;\nconst winRate = decided ? Math.round((wins.length / decided) * 100) : null;\nconst stats = {\n  gymName: s.gymName,\n  weekEnding: new Date(now).toISOString().slice(0, 10),\n  activeMembers: active.length,\n  highRisk: high.length,\n  mediumRisk: medium.length,\n  monthlyRevenueAtRisk: revenueAtRisk,\n  winbackEmailsThisWeek: sentThisWeek,\n  membersBackThisWeek: winsThisWeek.length,\n  membersBackLast30Days: wins30.length,\n  monthlyRevenueWonBackLast30Days: revenueWonBack30,\n  yearlyValueIfTheyStay: revenueWonBack30 * 12,\n  winbackRatePercent: winRate,\n  visitsThisWeek,\n  visitsLastWeek\n};\nconst topRisk = high.slice(0, 8).map(m => ({ name: m.name, plan: m.plan, trainer: m.trainer, fee: Number(m.monthly_fee || 0), score: m.risk_score, reasons: m.risk_reasons, contacted: !!m.last_outreach_at }));\nconst system = [\n  'You are a retention analyst writing a short weekly note for the owner of a gym.',\n  'Use only the numbers given. Never invent data. Be specific, calm and practical, no hype, no emojis.',\n  'Return only JSON: {\"headline\": \"one sentence under 14 words\", \"summary\": \"2 to 3 sentences, under 70 words\", \"actions\": [\"3 short, specific actions for this week, naming members or trainers where useful\"]}'\n].join(NL);\nconst user = [\n  'Weekly numbers: ' + JSON.stringify(stats),\n  'Members who came back after a win-back email (latest first): ' + JSON.stringify(wins30.slice(0, 10).map(w => ({ name: w.name, daysToReturn: w.daysToReturn, monthlyFee: w.fee }))),\n  'Highest-value members at high risk right now: ' + JSON.stringify(topRisk)\n].join(NL);\nreturn [{ json: { stats, wins: wins30.slice(0, 12), topRisk, system_prompt: system, user_prompt: user } }];"
+      }
+    },
+    {
+      "id": "b639aa1b-0081-40b6-bfe6-faed8c3c3c91",
+      "name": "Claude Writes Owner Summary",
+      "type": "@n8n/n8n-nodes-langchain.anthropic",
+      "typeVersion": 1,
+      "position": [
+        1440,
+        300
+      ],
+      "parameters": {
+        "resource": "text",
+        "operation": "message",
+        "modelId": {
+          "__rl": true,
+          "mode": "id",
+          "value": "={{ $(\"Gym Settings\").first().json.claudeModel }}"
+        },
+        "messages": {
+          "values": [
+            {
+              "role": "user",
+              "content": "={{ $json.user_prompt }}"
+            }
+          ]
+        },
+        "simplify": true,
+        "options": {
+          "system": "={{ $json.system_prompt }}",
+          "maxTokens": 2000
+        }
+      },
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 5000,
+      "onError": "continueRegularOutput"
+    },
+    {
+      "id": "c493a529-3120-4a43-94e6-f309a84e204d",
+      "name": "Build Report Email",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1680,
+        300
+      ],
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "jsCode": "const s = $('Gym Settings').first().json;\nconst data = $('Calculate Weekly ROI').first().json;\nconst st = data.stats;\nconst r = $input.first().json || {};\nlet text = '';\nif (typeof r.merged_response === 'string') text = r.merged_response;\nelse if (Array.isArray(r.content)) text = r.content.filter(c => c && c.type === 'text').map(c => c.text).join('');\nelse if (typeof r.content === 'string') text = r.content;\nelse if (typeof r.text === 'string') text = r.text;\nlet ai = null;\ntry { ai = JSON.parse(text.slice(text.indexOf('{'), text.lastIndexOf('}') + 1)); } catch (e) {}\nif (!ai || !ai.headline) {\n  ai = {\n    headline: st.membersBackLast30Days + ' members came back after a win-back email this month',\n    summary: st.highRisk + ' members are at high risk right now, with ' + s.currency + st.monthlyRevenueAtRisk + ' of monthly revenue at stake.',\n    actions: ['Call the top 3 high-risk members personally', 'Ask each trainer to message their at-risk clients', 'Check in with new members in their first 30 days']\n  };\n}\nconst esc = v => String(v == null ? '' : v).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');\nconst money = n => s.currency + Math.round(Number(n || 0)).toLocaleString('en-US');\nconst trend = st.visitsLastWeek ? Math.round(((st.visitsThisWeek - st.visitsLastWeek) / st.visitsLastWeek) * 100) : null;\nconst card = (value, label, bg, color) => '<td style=\"background:' + bg + ';padding:16px;border-radius:10px;width:25%;vertical-align:top\"><div style=\"font-size:26px;font-weight:700;color:' + color + '\">' + value + '</div><div style=\"font-size:12px;color:#667085;margin-top:4px\">' + label + '</div></td>';\nconst gap = '<td style=\"width:8px\"></td>';\nconst winsHtml = data.wins.length\n  ? data.wins.map(w => '<tr><td style=\"padding:8px;border-bottom:1px solid #eee\">' + esc(w.name) + '</td><td style=\"padding:8px;border-bottom:1px solid #eee;color:#667085\">back ' + w.daysToReturn + ' day(s) after the email</td><td style=\"padding:8px;border-bottom:1px solid #eee;text-align:right\">' + money(w.fee) + '/mo</td></tr>').join('')\n  : '<tr><td style=\"padding:8px;color:#667085\">No returns yet. Win-backs usually show up within 14 days.</td></tr>';\nconst riskHtml = data.topRisk.length\n  ? data.topRisk.map(m => '<tr><td style=\"padding:8px;border-bottom:1px solid #eee\"><strong>' + esc(m.name) + '</strong><br><span style=\"font-size:12px;color:#667085\">' + esc(m.plan) + ' · ' + esc(m.trainer) + (m.contacted ? ' · emailed' : '') + '</span></td><td style=\"padding:8px;border-bottom:1px solid #eee;font-size:13px\">' + esc(m.reasons) + '</td><td style=\"padding:8px;border-bottom:1px solid #eee;text-align:right\">' + money(m.fee) + '/mo</td></tr>').join('')\n  : '<tr><td style=\"padding:8px;color:#667085\">No high-risk members this week.</td></tr>';\nconst actionsHtml = (ai.actions || []).map(a => '<li style=\"margin-bottom:6px\">' + esc(a) + '</li>').join('');\nconst html =\n  '<div style=\"font-family:Arial,Helvetica,sans-serif;max-width:720px;margin:0 auto;color:#101828\">' +\n  '<p style=\"margin:0;color:#667085;font-size:13px\">' + esc(s.gymName) + ' · Weekly retention report · ' + esc(st.weekEnding) + '</p>' +\n  '<h1 style=\"font-size:22px;margin:6px 0 12px\">' + esc(ai.headline) + '</h1>' +\n  '<p style=\"font-size:15px;line-height:1.5;margin:0 0 18px\">' + esc(ai.summary) + '</p>' +\n  '<table style=\"width:100%;border-collapse:collapse;margin-bottom:22px\"><tr>' +\n  card(money(st.monthlyRevenueWonBackLast30Days), 'monthly revenue won back (30 days)', '#ecfdf3', '#067647') + gap +\n  card(st.membersBackLast30Days, 'members back after a win-back email', '#ecfdf3', '#067647') + gap +\n  card(money(st.monthlyRevenueAtRisk), 'monthly revenue at risk now', '#fef3f2', '#b42318') + gap +\n  card(st.winbackRatePercent === null ? '-' : st.winbackRatePercent + '%', 'win-back rate', '#f2f4f7', '#101828') +\n  '</tr></table>' +\n  '<p style=\"font-size:14px;margin:0 0 18px\">' + st.activeMembers + ' active members · ' + st.highRisk + ' high risk · ' + st.mediumRisk + ' medium risk · ' + st.winbackEmailsThisWeek + ' win-back emails sent this week · ' + st.visitsThisWeek + ' visits this week' + (trend === null ? '' : ' (' + (trend >= 0 ? '+' : '') + trend + '% vs last week)') + '</p>' +\n  '<h3 style=\"margin:0 0 8px\">This week, do this</h3><ol style=\"margin:0 0 20px;padding-left:20px;font-size:14px\">' + actionsHtml + '</ol>' +\n  '<h3 style=\"margin:0 0 8px\">Came back after a win-back email</h3><table style=\"width:100%;border-collapse:collapse;font-size:14px;margin-bottom:20px\">' + winsHtml + '</table>' +\n  '<h3 style=\"margin:0 0 8px\">Highest-value members at risk</h3><table style=\"width:100%;border-collapse:collapse;font-size:14px;margin-bottom:20px\">' + riskHtml + '</table>' +\n  '<p style=\"font-size:12px;color:#98a2b3\">\"Won back\" counts members who visited within 14 days of a win-back email. Yearly value if they stay: ' + money(st.yearlyValueIfTheyStay) + '. Sent by Gym Churn Radar' + (s.demoMode ? ' (demo mode)' : '') + '.</p>' +\n  '</div>';\nconst subject = 'Weekly retention: ' + money(st.monthlyRevenueWonBackLast30Days) + '/mo won back · ' + st.highRisk + ' members at risk';\nreturn [{ json: { subject, html } }];"
+      }
+    },
+    {
+      "id": "baf124d5-d55b-4c6f-a6bd-a0cd387d7c2b",
+      "name": "Email Weekly Report",
+      "type": "n8n-nodes-base.gmail",
+      "typeVersion": 2.2,
+      "position": [
+        1920,
+        300
+      ],
+      "parameters": {
+        "resource": "message",
+        "operation": "send",
+        "sendTo": "={{ $(\"Gym Settings\").first().json.ownerEmail }}",
+        "subject": "={{ $json.subject }}",
+        "emailType": "html",
+        "message": "={{ $json.html }}",
+        "options": {
+          "appendAttribution": false,
+          "senderName": "Gym Churn Radar"
+        }
+      },
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 5000,
+      "webhookId": "2510c6be-0c79-4740-807f-715816cbbd91",
+      "credentials": {
+        "gmailOAuth2": {
+          "id": "",
+          "name": "Gmail account"
+        }
+      }
+    },
+    {
+      "id": "b9518f32-2296-403e-af76-d65fd0de3b28",
+      "name": "Sticky Note 03d006fa",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        -40,
+        -60
+      ],
+      "parameters": {
+        "content": "## 📈 Monday ROI Report\nEvery Monday at 8am the owner gets one email that proves the tool pays for itself:\n- **Revenue won back**: members who visited within 14 days of a win-back email\n- **Revenue at risk** right now, and the win-back rate\n- The highest-value members at risk, and 3 actions for the week written by Claude\n\nThis is the email that sells the tool: show it to gym owners in every demo.",
+        "color": 4,
+        "width": 640,
+        "height": 300
+      }
+    }
+  ],
+  "connections": {
+    "Every Monday at 8am": {
+      "main": [
+        [
+          {
+            "node": "Gym Settings",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Gym Settings": {
+      "main": [
+        [
+          {
+            "node": "Get All Members",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Get All Members": {
+      "main": [
+        [
+          {
+            "node": "Get Outreach Log",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Get Outreach Log": {
+      "main": [
+        [
+          {
+            "node": "Get Visits Since First Outreach",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Get Visits Since First Outreach": {
+      "main": [
+        [
+          {
+            "node": "Calculate Weekly ROI",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Calculate Weekly ROI": {
+      "main": [
+        [
+          {
+            "node": "Claude Writes Owner Summary",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Claude Writes Owner Summary": {
+      "main": [
+        [
+          {
+            "node": "Build Report Email",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Build Report Email": {
+      "main": [
+        [
+          {
+            "node": "Email Weekly Report",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "pinData": {}
+}

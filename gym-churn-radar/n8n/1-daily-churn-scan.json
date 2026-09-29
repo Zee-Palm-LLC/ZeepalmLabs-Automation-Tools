@@ -1,0 +1,927 @@
+{
+  "name": "Gym Churn Radar 1 - Daily Churn Scan",
+  "nodes": [
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "triggerAtHour": 7
+            }
+          ]
+        }
+      },
+      "id": "c2e76187-c0b5-4118-a8b8-ebada8036ee4",
+      "name": "Every Day at 7am",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.4,
+      "position": [
+        0,
+        400
+      ]
+    },
+    {
+      "parameters": {
+        "operation": "get",
+        "dataTableId": {
+          "__rl": true,
+          "mode": "id",
+          "value": "SELECT_CHURN_MEMBERS_TABLE",
+          "cachedResultName": "churn_members"
+        },
+        "matchType": "allConditions",
+        "filters": {
+          "conditions": [
+            {
+              "keyName": "status",
+              "keyValue": "active"
+            }
+          ]
+        },
+        "returnAll": true
+      },
+      "id": "404b7f7c-76f0-49a5-bc43-1af253bf23b0",
+      "name": "Get Active Members",
+      "type": "n8n-nodes-base.dataTable",
+      "typeVersion": 1.1,
+      "position": [
+        480,
+        400
+      ]
+    },
+    {
+      "parameters": {
+        "operation": "get",
+        "dataTableId": {
+          "__rl": true,
+          "mode": "id",
+          "value": "SELECT_CHURN_CHECKINS_TABLE",
+          "cachedResultName": "churn_checkins"
+        },
+        "matchType": "allConditions",
+        "filters": {
+          "conditions": [
+            {
+              "keyName": "checked_in_at",
+              "condition": "gte",
+              "keyValue": "={{ $now.minus(91, \"days\").toISO() }}"
+            }
+          ]
+        },
+        "returnAll": true
+      },
+      "id": "121dd581-f5b4-4fb1-a295-b428c54b85b2",
+      "name": "Get Last 90 Days of Visits",
+      "type": "n8n-nodes-base.dataTable",
+      "typeVersion": 1.1,
+      "position": [
+        720,
+        400
+      ],
+      "executeOnce": true
+    },
+    {
+      "parameters": {
+        "jsCode": "const s = $('Gym Settings').first().json;\nconst NL = String.fromCharCode(10);\nconst DAY = 86400000;\nconst now = Date.now();\nconst members = $('Get Active Members').all().map(i => i.json).filter(m => m.member_ref);\nconst visitsByRef = {};\nfor (const item of $input.all()) {\n  const c = item.json;\n  if (!c.member_ref || !c.checked_in_at) continue;\n  const t = new Date(c.checked_in_at).getTime();\n  if (isNaN(t) || t > now) continue;\n  if (!visitsByRef[c.member_ref]) visitsByRef[c.member_ref] = [];\n  visitsByRef[c.member_ref].push(t);\n}\nconst round1 = n => Math.round(n * 10) / 10;\nconst out = [];\nfor (const m of members) {\n  const visits = (visitsByRef[m.member_ref] || []).sort((a, b) => b - a);\n  const joined = m.join_date ? new Date(m.join_date).getTime() : NaN;\n  const tenure = isNaN(joined) ? null : Math.max(0, Math.floor((now - joined) / DAY));\n  const last = visits.length ? visits[0] : null;\n  const daysSince = last !== null ? Math.floor((now - last) / DAY) : tenure;\n  const v30 = visits.filter(t => now - t <= 30 * DAY).length;\n  const vPrev = visits.filter(t => now - t > 30 * DAY && now - t <= 90 * DAY).length;\n  const prevDays = tenure === null ? 60 : Math.max(0, Math.min(60, tenure - 30));\n  const usual = prevDays >= 14 ? vPrev / (prevDays / 7) : null;\n  const recentDays = tenure === null ? 30 : Math.max(7, Math.min(30, tenure));\n  const recent = v30 / (recentDays / 7);\n  let score = 0;\n  const reasons = [];\n  if (daysSince !== null) {\n    if (daysSince >= 21) { score += 45; reasons.push('No visit in ' + daysSince + ' days'); }\n    else if (daysSince >= 14) { score += 35; reasons.push('No visit in ' + daysSince + ' days'); }\n    else if (daysSince >= 10) { score += 25; reasons.push('No visit in ' + daysSince + ' days'); }\n    else if (daysSince >= 7) { score += 12; reasons.push('No visit in ' + daysSince + ' days'); }\n  }\n  if (usual !== null && usual >= 1) {\n    const usualGap = 7 / usual;\n    if (daysSince !== null && daysSince >= 7 && daysSince > usualGap * 3) {\n      score += 10;\n      reasons.push('Gap is over 3x their usual ' + round1(usualGap) + ' days between visits');\n    }\n    const drop = 1 - recent / usual;\n    const dropText = 'Visits down ' + Math.round(drop * 100) + '% (' + round1(usual) + '/week before, ' + round1(recent) + '/week now)';\n    if (drop >= 0.7) { score += 30; reasons.push(dropText); }\n    else if (drop >= 0.5) { score += 20; reasons.push(dropText); }\n    else if (drop >= 0.3) { score += 10; reasons.push(dropText); }\n  }\n  if (tenure !== null && tenure <= 60 && v30 < 4) {\n    score += 15;\n    reasons.push('New member (joined ' + tenure + ' days ago) with only ' + v30 + ' visits in the last 30 days');\n  }\n  score = Math.min(100, score);\n  const level = score >= s.highRiskScore ? 'high' : score >= s.mediumRiskScore ? 'medium' : 'low';\n  const lastOutreach = m.last_outreach_at ? new Date(m.last_outreach_at).getTime() : NaN;\n  const cooledDown = isNaN(lastOutreach) || (now - lastOutreach) / DAY >= s.outreachCooldownDays;\n  const sent = Number(m.outreach_count || 0);\n  const needsOutreach = level === 'high' && cooledDown && !!m.email && sent < s.maxOutreachPerMember;\n  const firstName = String(m.name || '').trim().split(' ')[0] || 'there';\n  const systemPrompt = [\n    'You write short, warm win-back emails for ' + s.gymName + ', sent by ' + s.senderName + '.',\n    'The member has been coming less often. The goal is to get them back through the door with kindness, never guilt.',\n    'Rules:',\n    '- Plain text, 60 to 110 words, greet them by first name, sign off as ' + s.senderName + '.',\n    '- Mention their routine naturally (for example the sessions they used to do each week or how long they have been a member), in the tone of a coach who noticed they have not been in, not a system that tracked them.',\n    '- Never shame, never mention weight, body shape, calories or appearance, never use fake urgency.',\n    '- Offer: ' + s.winbackOffer + '.',\n    s.bookingLink ? '- Include this booking link once: ' + s.bookingLink : '- Ask them to simply reply to this email to claim it.',\n    '- End with one easy next step.',\n    'Return only JSON: {\"subject\": \"under 7 words, no emojis\", \"message\": \"the email body\"}'\n  ].join(NL);\n  const userPrompt = [\n    'Member first name: ' + firstName,\n    'Plan: ' + (m.plan || 'unknown'),\n    'Member for: ' + (tenure === null ? 'unknown' : tenure + ' days'),\n    'Trainer: ' + (m.trainer || 'none'),\n    'Usual visits per week before: ' + (usual === null ? 'not enough history' : round1(usual)),\n    'Visits in the last 30 days: ' + v30,\n    'Days since last visit: ' + (daysSince === null ? 'unknown' : daysSince),\n    'Why they were flagged: ' + reasons.join('; ')\n  ].join(NL);\n  out.push({ json: {\n    member_ref: m.member_ref,\n    name: m.name || '',\n    first_name: firstName,\n    email: m.email || '',\n    plan: m.plan || '',\n    monthly_fee: Number(m.monthly_fee || 0),\n    trainer: m.trainer || '',\n    tenure_days: tenure,\n    last_visit: last !== null ? new Date(last).toISOString() : null,\n    days_since_visit: daysSince,\n    visits_30d: v30,\n    visits_prev_60d: vPrev,\n    usual_per_week: usual === null ? null : round1(usual),\n    recent_per_week: round1(recent),\n    risk_score: score,\n    risk_level: level,\n    risk_reasons: reasons.join('; '),\n    scored_at: new Date(now).toISOString(),\n    outreach_count: sent,\n    needs_outreach: needsOutreach,\n    system_prompt: systemPrompt,\n    user_prompt: userPrompt\n  } });\n}\nout.sort((a, b) => b.json.risk_score - a.json.risk_score);\nreturn out;"
+      },
+      "id": "9b927958-6bc2-42a7-ba68-5d3e7ff29a03",
+      "name": "Score Churn Risk",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        960,
+        400
+      ]
+    },
+    {
+      "parameters": {
+        "operation": "upsert",
+        "dataTableId": {
+          "__rl": true,
+          "mode": "id",
+          "value": "SELECT_CHURN_MEMBERS_TABLE",
+          "cachedResultName": "churn_members"
+        },
+        "matchType": "allConditions",
+        "filters": {
+          "conditions": [
+            {
+              "keyName": "member_ref",
+              "keyValue": "={{ $json.member_ref }}"
+            }
+          ]
+        },
+        "columns": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "member_ref": "={{ $json.member_ref }}",
+            "last_visit": "={{ $json.last_visit }}",
+            "visits_30d": "={{ $json.visits_30d }}",
+            "visits_prev_60d": "={{ $json.visits_prev_60d }}",
+            "risk_score": "={{ $json.risk_score }}",
+            "risk_level": "={{ $json.risk_level }}",
+            "risk_reasons": "={{ $json.risk_reasons }}",
+            "scored_at": "={{ $json.scored_at }}"
+          },
+          "matchingColumns": [],
+          "schema": [
+            {
+              "id": "member_ref",
+              "displayName": "member_ref",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "readOnly": false,
+              "removed": false
+            },
+            {
+              "id": "name",
+              "displayName": "name",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "readOnly": false,
+              "removed": false
+            },
+            {
+              "id": "email",
+              "displayName": "email",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "readOnly": false,
+              "removed": false
+            },
+            {
+              "id": "phone",
+              "displayName": "phone",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "readOnly": false,
+              "removed": false
+            },
+            {
+              "id": "plan",
+              "displayName": "plan",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "readOnly": false,
+              "removed": false
+            },
+            {
+              "id": "monthly_fee",
+              "displayName": "monthly_fee",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "number",
+              "readOnly": false,
+              "removed": false
+            },
+            {
+              "id": "join_date",
+              "displayName": "join_date",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "dateTime",
+              "readOnly": false,
+              "removed": false
+            },
+            {
+              "id": "status",
+              "displayName": "status",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "readOnly": false,
+              "removed": false
+            },
+            {
+              "id": "trainer",
+              "displayName": "trainer",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "readOnly": false,
+              "removed": false
+            },
+            {
+              "id": "last_visit",
+              "displayName": "last_visit",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "dateTime",
+              "readOnly": false,
+              "removed": false
+            },
+            {
+              "id": "visits_30d",
+              "displayName": "visits_30d",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "number",
+              "readOnly": false,
+              "removed": false
+            },
+            {
+              "id": "visits_prev_60d",
+              "displayName": "visits_prev_60d",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "number",
+              "readOnly": false,
+              "removed": false
+            },
+            {
+              "id": "risk_score",
+              "displayName": "risk_score",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "number",
+              "readOnly": false,
+              "removed": false
+            },
+            {
+              "id": "risk_level",
+              "displayName": "risk_level",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "readOnly": false,
+              "removed": false
+            },
+            {
+              "id": "risk_reasons",
+              "displayName": "risk_reasons",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "readOnly": false,
+              "removed": false
+            },
+            {
+              "id": "scored_at",
+              "displayName": "scored_at",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "dateTime",
+              "readOnly": false,
+              "removed": false
+            },
+            {
+              "id": "last_outreach_at",
+              "displayName": "last_outreach_at",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "dateTime",
+              "readOnly": false,
+              "removed": false
+            },
+            {
+              "id": "outreach_count",
+              "displayName": "outreach_count",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "number",
+              "readOnly": false,
+              "removed": false
+            }
+          ],
+          "attemptToConvertTypes": false,
+          "convertFieldsToString": false
+        },
+        "options": {}
+      },
+      "id": "b86ab701-8249-4ed3-89b7-5bbe74ae6647",
+      "name": "Save Risk Scores",
+      "type": "n8n-nodes-base.dataTable",
+      "typeVersion": 1.1,
+      "position": [
+        1216,
+        112
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "loose",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "leftValue": "={{ $json.needs_outreach }}",
+              "rightValue": "",
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "93ec0775-fedb-4248-8bf2-035b9f4f0897",
+      "name": "Needs Win-back Outreach?",
+      "type": "n8n-nodes-base.filter",
+      "typeVersion": 2.3,
+      "position": [
+        1248,
+        400
+      ]
+    },
+    {
+      "parameters": {
+        "maxItems": "={{ $(\"Gym Settings\").first().json.maxOutreachPerDay }}"
+      },
+      "id": "c9eabb35-2a51-4d55-9161-7f8cd6b59641",
+      "name": "Cap Daily Outreach",
+      "type": "n8n-nodes-base.limit",
+      "typeVersion": 1,
+      "position": [
+        1488,
+        400
+      ]
+    },
+    {
+      "parameters": {
+        "modelId": {
+          "__rl": true,
+          "mode": "id",
+          "value": "={{ $(\"Gym Settings\").first().json.claudeModel }}"
+        },
+        "messages": {
+          "values": [
+            {
+              "content": "={{ $json.user_prompt }}"
+            }
+          ]
+        },
+        "options": {
+          "system": "={{ $json.system_prompt }}",
+          "maxTokens": 2000
+        }
+      },
+      "id": "fe8adc79-9ecf-42d2-b146-b3512bdc6840",
+      "name": "Claude Writes Win-back Email",
+      "type": "@n8n/n8n-nodes-langchain.anthropic",
+      "typeVersion": 1,
+      "position": [
+        1728,
+        400
+      ],
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 5000,
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForEachItem",
+        "jsCode": "const s = $('Gym Settings').first().json;\nconst m = $('Cap Daily Outreach').item.json;\nconst NL = String.fromCharCode(10);\nconst r = $json || {};\nlet text = '';\nif (typeof r.merged_response === 'string') text = r.merged_response;\nelse if (Array.isArray(r.content)) text = r.content.filter(c => c && c.type === 'text').map(c => c.text).join('');\nelse if (typeof r.content === 'string') text = r.content;\nelse if (typeof r.text === 'string') text = r.text;\nelse if (typeof r.output === 'string') text = r.output;\nlet subject = '';\nlet message = '';\ntry {\n  const parsed = JSON.parse(text.slice(text.indexOf('{'), text.lastIndexOf('}') + 1));\n  subject = String(parsed.subject || '').trim();\n  message = String(parsed.message || '').trim();\n} catch (e) {}\nconst aiWritten = !!(subject && message);\nif (!aiWritten) {\n  subject = 'We miss you at ' + s.gymName;\n  message = [\n    'Hi ' + m.first_name + ',',\n    '',\n    \"We haven't seen you at \" + s.gymName + ' for a little while and wanted to check in.',\n    '',\n    'Life gets busy, and restarting is often the hardest part, so we would love to offer you ' + s.winbackOffer + '.',\n    '',\n    s.bookingLink ? 'Book a time here: ' + s.bookingLink : 'Just reply to this email and we will set it up.',\n    '',\n    s.senderName\n  ].join(NL);\n}\nconst sendTo = s.demoMode ? s.ownerEmail : m.email;\nreturn { json: {\n  member_ref: m.member_ref,\n  name: m.name,\n  email: m.email,\n  monthly_fee: m.monthly_fee,\n  risk_score: m.risk_score,\n  risk_level: m.risk_level,\n  risk_reasons: m.risk_reasons,\n  outreach_count: Number(m.outreach_count || 0) + 1,\n  subject: subject,\n  message: message,\n  send_to: sendTo,\n  send_subject: s.demoMode ? '[DEMO for ' + m.name + '] ' + subject : subject,\n  demo_mode: !!s.demoMode,\n  ai_written: aiWritten,\n  sent_at: new Date().toISOString()\n} };"
+      },
+      "id": "a70ad5c9-bb3b-4b8a-9273-daaf992ace69",
+      "name": "Prepare Win-back Email",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1968,
+        400
+      ]
+    },
+    {
+      "parameters": {
+        "sendTo": "={{ $json.send_to }}",
+        "subject": "={{ $json.send_subject }}",
+        "emailType": "text",
+        "message": "={{ $json.message }}",
+        "options": {
+          "appendAttribution": false,
+          "senderName": "={{ $(\"Gym Settings\").first().json.senderName }}"
+        }
+      },
+      "id": "ca373a50-7f60-4ecc-83be-b2a44b499201",
+      "name": "Send Win-back Email",
+      "type": "n8n-nodes-base.gmail",
+      "typeVersion": 2.2,
+      "position": [
+        2208,
+        400
+      ],
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 5000,
+      "webhookId": "49e33208-0608-410b-adf9-132f44ab66c5",
+      "credentials": {
+        "gmailOAuth2": {
+          "id": "",
+          "name": "Gmail account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "dataTableId": {
+          "__rl": true,
+          "mode": "id",
+          "value": "SELECT_CHURN_OUTREACH_TABLE",
+          "cachedResultName": "churn_outreach"
+        },
+        "columns": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "member_ref": "={{ $(\"Prepare Win-back Email\").item.json.member_ref }}",
+            "name": "={{ $(\"Prepare Win-back Email\").item.json.name }}",
+            "email": "={{ $(\"Prepare Win-back Email\").item.json.email }}",
+            "sent_at": "={{ $(\"Prepare Win-back Email\").item.json.sent_at }}",
+            "risk_score": "={{ $(\"Prepare Win-back Email\").item.json.risk_score }}",
+            "risk_level": "={{ $(\"Prepare Win-back Email\").item.json.risk_level }}",
+            "risk_reasons": "={{ $(\"Prepare Win-back Email\").item.json.risk_reasons }}",
+            "monthly_fee": "={{ $(\"Prepare Win-back Email\").item.json.monthly_fee }}",
+            "subject": "={{ $(\"Prepare Win-back Email\").item.json.subject }}",
+            "message": "={{ $(\"Prepare Win-back Email\").item.json.message }}",
+            "sent_to": "={{ $(\"Prepare Win-back Email\").item.json.send_to }}",
+            "demo_mode": "={{ $(\"Prepare Win-back Email\").item.json.demo_mode }}"
+          },
+          "matchingColumns": [],
+          "schema": [
+            {
+              "id": "member_ref",
+              "displayName": "member_ref",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "name",
+              "displayName": "name",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "email",
+              "displayName": "email",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "sent_at",
+              "displayName": "sent_at",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "dateTime",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "risk_score",
+              "displayName": "risk_score",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "number",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "risk_level",
+              "displayName": "risk_level",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "risk_reasons",
+              "displayName": "risk_reasons",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "monthly_fee",
+              "displayName": "monthly_fee",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "number",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "subject",
+              "displayName": "subject",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "message",
+              "displayName": "message",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "sent_to",
+              "displayName": "sent_to",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "demo_mode",
+              "displayName": "demo_mode",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "boolean",
+              "canBeUsedToMatch": true
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "451779de-c2f8-4d5c-b77c-77bf1ec5bac2",
+      "name": "Log Outreach",
+      "type": "n8n-nodes-base.dataTable",
+      "typeVersion": 1.1,
+      "position": [
+        2448,
+        400
+      ]
+    },
+    {
+      "parameters": {
+        "operation": "upsert",
+        "dataTableId": {
+          "__rl": true,
+          "mode": "id",
+          "value": "SELECT_CHURN_MEMBERS_TABLE",
+          "cachedResultName": "churn_members"
+        },
+        "matchType": "allConditions",
+        "filters": {
+          "conditions": [
+            {
+              "keyName": "member_ref",
+              "keyValue": "={{ $(\"Prepare Win-back Email\").item.json.member_ref }}"
+            }
+          ]
+        },
+        "columns": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "member_ref": "={{ $(\"Prepare Win-back Email\").item.json.member_ref }}",
+            "last_outreach_at": "={{ $(\"Prepare Win-back Email\").item.json.sent_at }}",
+            "outreach_count": "={{ $(\"Prepare Win-back Email\").item.json.outreach_count }}"
+          },
+          "matchingColumns": [],
+          "schema": [
+            {
+              "id": "member_ref",
+              "displayName": "member_ref",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "last_outreach_at",
+              "displayName": "last_outreach_at",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "dateTime",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "outreach_count",
+              "displayName": "outreach_count",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "number",
+              "canBeUsedToMatch": true
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "4be35a56-ff5e-43cb-9bde-d9c8cd08c20b",
+      "name": "Mark Member Contacted",
+      "type": "n8n-nodes-base.dataTable",
+      "typeVersion": 1.1,
+      "position": [
+        2688,
+        400
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "const s = $('Gym Settings').first().json;\nconst rows = $input.all().map(i => i.json);\nconst atRisk = rows.filter(r => r.risk_level === 'high' || r.risk_level === 'medium');\nif (!atRisk.length) return [];\nconst esc = v => String(v == null ? '' : v).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');\nconst money = n => s.currency + Math.round(n).toLocaleString('en-US');\nconst high = atRisk.filter(r => r.risk_level === 'high');\nconst revenue = atRisk.reduce((a, r) => a + Number(r.monthly_fee || 0), 0);\nconst contacted = high.filter(r => r.needs_outreach).length;\nconst badge = level => level === 'high'\n  ? '<span style=\"background:#fde2e1;color:#b42318;padding:2px 8px;border-radius:10px;font-size:12px;font-weight:600\">HIGH</span>'\n  : '<span style=\"background:#fef0c7;color:#b54708;padding:2px 8px;border-radius:10px;font-size:12px;font-weight:600\">MEDIUM</span>';\nconst rowsHtml = atRisk.slice(0, 30).map(r =>\n  '<tr>' +\n  '<td style=\"padding:10px 8px;border-bottom:1px solid #eee\"><strong>' + esc(r.name) + '</strong><br><span style=\"color:#667085;font-size:12px\">' + esc(r.plan) + ' · ' + esc(r.trainer) + '</span></td>' +\n  '<td style=\"padding:10px 8px;border-bottom:1px solid #eee\">' + badge(r.risk_level) + '<br><span style=\"color:#667085;font-size:12px\">score ' + r.risk_score + '</span></td>' +\n  '<td style=\"padding:10px 8px;border-bottom:1px solid #eee;font-size:13px\">' + esc(r.risk_reasons) + '</td>' +\n  '<td style=\"padding:10px 8px;border-bottom:1px solid #eee;text-align:right\">' + money(r.monthly_fee) + '/mo</td>' +\n  '</tr>').join('');\nconst html =\n  '<div style=\"font-family:Arial,Helvetica,sans-serif;max-width:720px;margin:0 auto;color:#101828\">' +\n  '<h2 style=\"margin:0 0 4px\">Members at risk today</h2>' +\n  '<p style=\"margin:0 0 16px;color:#667085\">' + esc(s.gymName) + ' · Gym Churn Radar</p>' +\n  '<table style=\"width:100%;border-collapse:collapse;margin-bottom:16px\"><tr>' +\n  '<td style=\"background:#fef3f2;padding:14px;border-radius:8px;width:33%\"><div style=\"font-size:24px;font-weight:700;color:#b42318\">' + high.length + '</div><div style=\"font-size:12px;color:#667085\">high risk</div></td>' +\n  '<td style=\"width:8px\"></td>' +\n  '<td style=\"background:#fffaeb;padding:14px;border-radius:8px;width:33%\"><div style=\"font-size:24px;font-weight:700;color:#b54708\">' + (atRisk.length - high.length) + '</div><div style=\"font-size:12px;color:#667085\">medium risk</div></td>' +\n  '<td style=\"width:8px\"></td>' +\n  '<td style=\"background:#f2f4f7;padding:14px;border-radius:8px;width:33%\"><div style=\"font-size:24px;font-weight:700\">' + money(revenue) + '</div><div style=\"font-size:12px;color:#667085\">monthly revenue at risk</div></td>' +\n  '</tr></table>' +\n  '<p style=\"font-size:14px\">' + contacted + ' high-risk member(s) are getting a personal win-back email this morning' + (s.demoMode ? ' <strong>(demo mode: sent to you, not to members)</strong>' : '') + '. A quick call or a hello from their trainer doubles the effect.</p>' +\n  '<table style=\"width:100%;border-collapse:collapse;font-size:14px\"><tr style=\"text-align:left;color:#667085;font-size:12px\"><th style=\"padding:8px\">Member</th><th style=\"padding:8px\">Risk</th><th style=\"padding:8px\">Why</th><th style=\"padding:8px;text-align:right\">Value</th></tr>' + rowsHtml + '</table>' +\n  '</div>';\nreturn [{ json: { subject: high.length + ' members at high risk of cancelling · ' + money(revenue) + '/mo at stake', html } }];"
+      },
+      "id": "1befdfc6-70b9-4ec2-9f17-0eb28343c30d",
+      "name": "Build Owner Alert",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1248,
+        624
+      ]
+    },
+    {
+      "parameters": {
+        "sendTo": "={{ $(\"Gym Settings\").first().json.ownerEmail }}",
+        "subject": "={{ $json.subject }}",
+        "message": "={{ $json.html }}",
+        "options": {
+          "appendAttribution": false,
+          "senderName": "Gym Churn Radar"
+        }
+      },
+      "id": "8864b47c-e277-40a0-a075-506d409a80b7",
+      "name": "Email Owner At-Risk List",
+      "type": "n8n-nodes-base.gmail",
+      "typeVersion": 2.2,
+      "position": [
+        1488,
+        624
+      ],
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 5000,
+      "webhookId": "487d52dd-944f-4db8-a52d-d3c756df2177",
+      "credentials": {
+        "gmailOAuth2": {
+          "id": "",
+          "name": "Gmail account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "content": "## 📡 Daily Churn Scan\nEvery morning at 7am this scores every active member from their visit history, then:\n1. **Saves** the risk score, level and reasons on each member\n2. **Emails** high-risk members a personal win-back message written by Claude (daily cap, cooldown and max per member are set in settings)\n3. **Sends the owner** a report of who is at risk and how much monthly revenue is at stake\n\n⚙️ **All settings live in the `churn_settings` data table** (Overview → Data tables): gym name, owner email, sender name, offer, thresholds.\n🛡️ **Demo mode is ON**: win-back emails go to the owner email instead of members. Set `demoMode` to false only when you go live.",
+        "height": 360,
+        "width": 760,
+        "color": 4
+      },
+      "id": "9e3aaa84-f98c-40b0-bd18-6a57e9575223",
+      "name": "Sticky Note 6649367a",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        -48,
+        -16
+      ]
+    },
+    {
+      "parameters": {
+        "content": "### How the risk score works (0-100)\n- Days since last visit: up to **45**\n- Visits dropped vs their own normal: up to **30**\n- Gap 3x longer than usual: **10**\n- New member not building a habit: **15**\n\n**High** ≥ 60 · **Medium** ≥ 35. Everything is explainable: the reasons are saved with every score.",
+        "height": 300,
+        "width": 320,
+        "color": 6
+      },
+      "id": "cd1e1534-6da0-4a76-9af9-75702eb7fc43",
+      "name": "Sticky Note 752e655b",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        880,
+        640
+      ]
+    },
+    {
+      "parameters": {
+        "operation": "get",
+        "dataTableId": {
+          "__rl": true,
+          "mode": "id",
+          "value": "SELECT_CHURN_SETTINGS_TABLE",
+          "cachedResultName": "churn_settings"
+        },
+        "limit": 1
+      },
+      "id": "1b67d6b2-939b-48a1-92e0-65ac0b57c127",
+      "name": "Gym Settings",
+      "type": "n8n-nodes-base.dataTable",
+      "typeVersion": 1.1,
+      "position": [
+        240,
+        400
+      ]
+    },
+    {
+      "id": "4c1d1114-0415-4082-b75f-0bc842694e11",
+      "name": "When Started From Dashboard",
+      "type": "n8n-nodes-base.executeWorkflowTrigger",
+      "typeVersion": 1.2,
+      "position": [
+        0,
+        600
+      ],
+      "parameters": {
+        "inputSource": "passthrough"
+      }
+    }
+  ],
+  "connections": {
+    "Get Active Members": {
+      "main": [
+        [
+          {
+            "node": "Get Last 90 Days of Visits",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Get Last 90 Days of Visits": {
+      "main": [
+        [
+          {
+            "node": "Score Churn Risk",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Score Churn Risk": {
+      "main": [
+        [
+          {
+            "node": "Save Risk Scores",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Needs Win-back Outreach?",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Build Owner Alert",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Needs Win-back Outreach?": {
+      "main": [
+        [
+          {
+            "node": "Cap Daily Outreach",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Cap Daily Outreach": {
+      "main": [
+        [
+          {
+            "node": "Claude Writes Win-back Email",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Claude Writes Win-back Email": {
+      "main": [
+        [
+          {
+            "node": "Prepare Win-back Email",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Prepare Win-back Email": {
+      "main": [
+        [
+          {
+            "node": "Send Win-back Email",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Send Win-back Email": {
+      "main": [
+        [
+          {
+            "node": "Log Outreach",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Log Outreach": {
+      "main": [
+        [
+          {
+            "node": "Mark Member Contacted",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Build Owner Alert": {
+      "main": [
+        [
+          {
+            "node": "Email Owner At-Risk List",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Every Day at 7am": {
+      "main": [
+        [
+          {
+            "node": "Gym Settings",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Gym Settings": {
+      "main": [
+        [
+          {
+            "node": "Get Active Members",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "When Started From Dashboard": {
+      "main": [
+        [
+          {
+            "node": "Gym Settings",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1",
+    "binaryMode": "separate"
+  },
+  "pinData": {}
+}

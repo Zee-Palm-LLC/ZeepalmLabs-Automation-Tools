@@ -1,0 +1,613 @@
+{
+  "name": "Gym Churn Radar 3 - Data Import",
+  "nodes": [
+    {
+      "id": "541af6de-be49-4812-bb3a-d7e8eef80ee7",
+      "name": "Door Check-in Webhook",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2.1,
+      "position": [
+        0,
+        200
+      ],
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "gym-checkin",
+        "responseMode": "onReceived",
+        "options": {}
+      },
+      "webhookId": "022ef777-2f76-4e6c-b618-b1efca1e89ea"
+    },
+    {
+      "id": "ffe3b38a-5664-437a-b7de-78d86a26bfc3",
+      "name": "Normalize Check-in",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        240,
+        200
+      ],
+      "parameters": {
+        "mode": "manual",
+        "includeOtherFields": false,
+        "assignments": {
+          "assignments": [
+            {
+              "id": "nc-ref",
+              "name": "member_ref",
+              "value": "={{ (() => { const v = String($json.body?.member_ref ?? $json.body?.member_id ?? $json.body?.email ?? $json.member_ref ?? \"\").trim(); return v.includes(\"@\") ? v.toLowerCase() : v; })() }}",
+              "type": "string"
+            },
+            {
+              "id": "nc-at",
+              "name": "checked_in_at",
+              "value": "={{ (() => { const d = new Date($json.body?.checked_in_at ?? $json.body?.timestamp ?? Date.now()); return isNaN(d.getTime()) ? new Date().toISOString() : d.toISOString(); })() }}",
+              "type": "string"
+            },
+            {
+              "id": "nc-src",
+              "name": "source",
+              "value": "={{ $json.body?.source ?? \"webhook\" }}",
+              "type": "string"
+            }
+          ]
+        },
+        "options": {}
+      }
+    },
+    {
+      "id": "6056f738-0d14-4bb5-b768-01243ea7ef86",
+      "name": "Has Member ID?",
+      "type": "n8n-nodes-base.filter",
+      "typeVersion": 2.3,
+      "position": [
+        480,
+        200
+      ],
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "loose",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "leftValue": "={{ $json.member_ref }}",
+              "rightValue": "",
+              "operator": {
+                "type": "string",
+                "operation": "notEmpty",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      }
+    },
+    {
+      "id": "1cad251f-1331-4c69-b68a-7e320091e7d6",
+      "name": "Save Check-in",
+      "type": "n8n-nodes-base.dataTable",
+      "typeVersion": 1.1,
+      "position": [
+        720,
+        200
+      ],
+      "parameters": {
+        "resource": "row",
+        "operation": "insert",
+        "dataTableId": {
+          "__rl": true,
+          "mode": "id",
+          "value": "SELECT_CHURN_CHECKINS_TABLE",
+          "cachedResultName": "churn_checkins"
+        },
+        "columns": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "member_ref": "={{ $json.member_ref }}",
+            "checked_in_at": "={{ $json.checked_in_at }}",
+            "source": "={{ $json.source }}"
+          },
+          "matchingColumns": [],
+          "schema": [
+            {
+              "id": "member_ref",
+              "displayName": "member_ref",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "checked_in_at",
+              "displayName": "checked_in_at",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "dateTime",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "source",
+              "displayName": "source",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            }
+          ]
+        },
+        "options": {}
+      }
+    },
+    {
+      "id": "112514fc-087c-4179-8e60-95b8864c1ff8",
+      "name": "Upload Gym Data",
+      "type": "n8n-nodes-base.formTrigger",
+      "typeVersion": 2.6,
+      "position": [
+        0,
+        520
+      ],
+      "parameters": {
+        "formTitle": "Gym Churn Radar: upload your gym data",
+        "formDescription": "Export your members or check-ins as a CSV from your gym software and upload it here. Column names are matched automatically (member ID or email, name, plan, monthly fee, join date, status, trainer; or member ID/email plus check-in date and time).",
+        "formFields": {
+          "values": [
+            {
+              "fieldName": "upload_type",
+              "fieldLabel": "What are you uploading?",
+              "fieldType": "dropdown",
+              "fieldOptions": {
+                "values": [
+                  {
+                    "option": "Members list"
+                  },
+                  {
+                    "option": "Check-in history"
+                  }
+                ]
+              },
+              "requiredField": true
+            },
+            {
+              "fieldName": "csv_file",
+              "fieldLabel": "CSV file",
+              "fieldType": "file",
+              "multipleFiles": false,
+              "acceptFileTypes": ".csv",
+              "requiredField": true
+            }
+          ]
+        },
+        "responseMode": "onReceived",
+        "options": {
+          "appendAttribution": false,
+          "buttonLabel": "Upload",
+          "path": "gym-churn-upload",
+          "respondWithOptions": {
+            "values": {
+              "respondWith": "text",
+              "formSubmittedText": "Thanks! Your file is being imported. Risk scores update on the next daily scan."
+            }
+          }
+        }
+      },
+      "webhookId": "5f4b41e5-7b53-4a2c-9240-07c1642e4b55"
+    },
+    {
+      "id": "8ccda33d-2b44-46a3-b6ec-5034990b5f75",
+      "name": "Read CSV",
+      "type": "n8n-nodes-base.extractFromFile",
+      "typeVersion": 1.1,
+      "position": [
+        240,
+        520
+      ],
+      "parameters": {
+        "operation": "csv",
+        "binaryPropertyName": "={{ Object.keys($binary || {})[0] || \"csv_file\" }}",
+        "options": {
+          "headerRow": true,
+          "enableBOM": true,
+          "relaxQuotes": true
+        }
+      }
+    },
+    {
+      "id": "2e0add53-6e15-40b9-8783-eb58db1d466c",
+      "name": "Clean and Map Columns",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        480,
+        520
+      ],
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "jsCode": "const type = String($('Upload Gym Data').first().json.upload_type || '').toLowerCase();\nconst isMembers = type.startsWith('member');\nconst norm = k => String(k).trim().toLowerCase().replace(/[^a-z0-9]+/g, '_').replace(/^_|_$/g, '');\nconst pick = (row, keys) => {\n  for (const k of keys) {\n    if (row[k] !== undefined && row[k] !== null && String(row[k]).trim() !== '') return String(row[k]).trim();\n  }\n  return '';\n};\nconst toIso = v => {\n  if (!v) return null;\n  const d = new Date(v);\n  return isNaN(d.getTime()) ? null : d.toISOString();\n};\nconst out = [];\nfor (const item of $input.all()) {\n  const row = {};\n  for (const [k, v] of Object.entries(item.json)) row[norm(k)] = v;\n  if (isMembers) {\n    const email = pick(row, ['email', 'email_address', 'e_mail']).toLowerCase();\n    const ref = pick(row, ['member_ref', 'member_id', 'memberid', 'membership_number', 'member_number', 'barcode', 'id']) || email;\n    if (!ref) continue;\n    const first = pick(row, ['first_name', 'firstname']);\n    const last = pick(row, ['last_name', 'lastname', 'surname']);\n    const name = pick(row, ['name', 'full_name', 'member_name']) || (first + ' ' + last).trim();\n    const statusRaw = pick(row, ['status', 'membership_status']).toLowerCase();\n    const status = !statusRaw ? 'active' : /cancel|expired|inactive|terminated|ended/.test(statusRaw) ? 'cancelled' : /freeze|frozen|hold|paused|suspend/.test(statusRaw) ? 'frozen' : 'active';\n    const fee = parseFloat(pick(row, ['monthly_fee', 'fee', 'price', 'monthly_price', 'dues', 'amount', 'rate']).replace(/[^0-9.]/g, ''));\n    out.push({ json: {\n      kind: 'member',\n      member_ref: ref.includes('@') ? ref.toLowerCase() : ref,\n      name,\n      email,\n      phone: pick(row, ['phone', 'mobile', 'phone_number', 'cell']),\n      plan: pick(row, ['plan', 'membership', 'membership_type', 'package', 'tier']),\n      monthly_fee: isNaN(fee) ? 0 : fee,\n      join_date: toIso(pick(row, ['join_date', 'joined', 'start_date', 'member_since', 'signup_date', 'created'])),\n      status,\n      trainer: pick(row, ['trainer', 'coach', 'personal_trainer'])\n    } });\n  } else {\n    const ref = pick(row, ['member_ref', 'member_id', 'memberid', 'membership_number', 'member_number', 'barcode', 'id', 'email', 'email_address']);\n    const date = pick(row, ['checked_in_at', 'check_in', 'checkin', 'check_in_time', 'timestamp', 'date_time', 'datetime', 'visit_date', 'visited_at', 'date']);\n    const time = pick(row, ['time', 'check_in_hour']);\n    const iso = toIso(time && date.length <= 10 ? date + ' ' + time : date);\n    if (!ref || !iso) continue;\n    out.push({ json: { kind: 'checkin', member_ref: ref.includes('@') ? ref.toLowerCase() : ref, checked_in_at: iso, source: 'csv import' } });\n  }\n}\nreturn out;"
+      }
+    },
+    {
+      "id": "934aec02-7eb7-4ca4-b537-ee67a9a14bb9",
+      "name": "Members or Check-ins?",
+      "type": "n8n-nodes-base.switch",
+      "typeVersion": 3.4,
+      "position": [
+        720,
+        520
+      ],
+      "parameters": {
+        "mode": "rules",
+        "rules": {
+          "values": [
+            {
+              "renameOutput": true,
+              "outputKey": "Members",
+              "conditions": {
+                "options": {
+                  "caseSensitive": false,
+                  "leftValue": "",
+                  "typeValidation": "strict"
+                },
+                "conditions": [
+                  {
+                    "leftValue": "={{ $json.kind }}",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals"
+                    },
+                    "rightValue": "member"
+                  }
+                ],
+                "combinator": "and"
+              }
+            },
+            {
+              "renameOutput": true,
+              "outputKey": "Check-ins",
+              "conditions": {
+                "options": {
+                  "caseSensitive": false,
+                  "leftValue": "",
+                  "typeValidation": "strict"
+                },
+                "conditions": [
+                  {
+                    "leftValue": "={{ $json.kind }}",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals"
+                    },
+                    "rightValue": "checkin"
+                  }
+                ],
+                "combinator": "and"
+              }
+            }
+          ]
+        },
+        "options": {}
+      }
+    },
+    {
+      "id": "923f9c8f-8a7e-4cc2-8cd8-f20ace7462af",
+      "name": "Add or Update Member",
+      "type": "n8n-nodes-base.dataTable",
+      "typeVersion": 1.1,
+      "position": [
+        960,
+        440
+      ],
+      "parameters": {
+        "resource": "row",
+        "operation": "upsert",
+        "dataTableId": {
+          "__rl": true,
+          "mode": "id",
+          "value": "SELECT_CHURN_MEMBERS_TABLE",
+          "cachedResultName": "churn_members"
+        },
+        "matchType": "allConditions",
+        "filters": {
+          "conditions": [
+            {
+              "keyName": "member_ref",
+              "condition": "eq",
+              "keyValue": "={{ $json.member_ref }}"
+            }
+          ]
+        },
+        "columns": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "member_ref": "={{ $json.member_ref }}",
+            "name": "={{ $json.name }}",
+            "email": "={{ $json.email }}",
+            "phone": "={{ $json.phone }}",
+            "plan": "={{ $json.plan }}",
+            "monthly_fee": "={{ $json.monthly_fee }}",
+            "join_date": "={{ $json.join_date }}",
+            "status": "={{ $json.status }}",
+            "trainer": "={{ $json.trainer }}"
+          },
+          "matchingColumns": [],
+          "schema": [
+            {
+              "id": "member_ref",
+              "displayName": "member_ref",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "name",
+              "displayName": "name",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "email",
+              "displayName": "email",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "phone",
+              "displayName": "phone",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "plan",
+              "displayName": "plan",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "monthly_fee",
+              "displayName": "monthly_fee",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "number",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "join_date",
+              "displayName": "join_date",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "dateTime",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "status",
+              "displayName": "status",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "trainer",
+              "displayName": "trainer",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            }
+          ]
+        },
+        "options": {}
+      }
+    },
+    {
+      "id": "2576c4d3-32c2-41f0-ab2d-a052123a2047",
+      "name": "Save Imported Check-ins",
+      "type": "n8n-nodes-base.dataTable",
+      "typeVersion": 1.1,
+      "position": [
+        960,
+        620
+      ],
+      "parameters": {
+        "resource": "row",
+        "operation": "insert",
+        "dataTableId": {
+          "__rl": true,
+          "mode": "id",
+          "value": "SELECT_CHURN_CHECKINS_TABLE",
+          "cachedResultName": "churn_checkins"
+        },
+        "columns": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "member_ref": "={{ $json.member_ref }}",
+            "checked_in_at": "={{ $json.checked_in_at }}",
+            "source": "={{ $json.source }}"
+          },
+          "matchingColumns": [],
+          "schema": [
+            {
+              "id": "member_ref",
+              "displayName": "member_ref",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "checked_in_at",
+              "displayName": "checked_in_at",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "dateTime",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "source",
+              "displayName": "source",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            }
+          ]
+        },
+        "options": {
+          "optimizeBulk": true
+        }
+      }
+    },
+    {
+      "id": "1de8d731-7d41-449b-8bfd-bc08beb87a1f",
+      "name": "Sticky Note 8820a8a6",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        -40,
+        -20
+      ],
+      "parameters": {
+        "content": "## 🚪 Live check-ins\nPoint your door scanner, booking app or Zapier at the **production URL** of this webhook.\n\n`POST` JSON: `{ \"member_ref\": \"M-2001\", \"checked_in_at\": \"2026-09-28T07:15:00Z\" }`\n`member_id` or `email` also work, and the time defaults to now.",
+        "color": 5,
+        "width": 560,
+        "height": 200
+      }
+    },
+    {
+      "id": "417abd89-2622-4015-8347-412f5038ba48",
+      "name": "Sticky Note 2bd2bfc4",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        -40,
+        300
+      ],
+      "parameters": {
+        "content": "## 📤 CSV import (onboarding a gym)\nShare the **form URL** with the gym owner. They upload the members list first, then their check-in history (ideally 90 days). Common column names from Mindbody, Glofox, PushPress, ClubReady and similar tools are matched automatically.",
+        "color": 5,
+        "width": 560,
+        "height": 180
+      }
+    }
+  ],
+  "connections": {
+    "Door Check-in Webhook": {
+      "main": [
+        [
+          {
+            "node": "Normalize Check-in",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Normalize Check-in": {
+      "main": [
+        [
+          {
+            "node": "Has Member ID?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Has Member ID?": {
+      "main": [
+        [
+          {
+            "node": "Save Check-in",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Upload Gym Data": {
+      "main": [
+        [
+          {
+            "node": "Read CSV",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Read CSV": {
+      "main": [
+        [
+          {
+            "node": "Clean and Map Columns",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Clean and Map Columns": {
+      "main": [
+        [
+          {
+            "node": "Members or Check-ins?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Members or Check-ins?": {
+      "main": [
+        [
+          {
+            "node": "Add or Update Member",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Save Imported Check-ins",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "pinData": {}
+}

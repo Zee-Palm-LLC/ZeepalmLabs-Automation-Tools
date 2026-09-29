@@ -1,0 +1,1066 @@
+{
+  "name": "Gym Churn Radar 5 - Dashboard API",
+  "nodes": [
+    {
+      "id": "77403903-d749-46a7-990f-f58c727ada9e",
+      "name": "Dashboard Data Request",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2.1,
+      "position": [
+        0,
+        200
+      ],
+      "parameters": {
+        "httpMethod": "GET",
+        "path": "gym-churn-api",
+        "responseMode": "responseNode",
+        "options": {
+          "allowedOrigins": "*"
+        }
+      },
+      "webhookId": "4f86d8a1-880b-4d48-901c-ecf305074e97"
+    },
+    {
+      "id": "670543e1-3277-4b0b-8593-26b5a45f0fda",
+      "name": "Gym Settings",
+      "type": "n8n-nodes-base.dataTable",
+      "typeVersion": 1.1,
+      "position": [
+        240,
+        200
+      ],
+      "parameters": {
+        "resource": "row",
+        "operation": "get",
+        "dataTableId": {
+          "__rl": true,
+          "mode": "id",
+          "value": "SELECT_CHURN_SETTINGS_TABLE",
+          "cachedResultName": "churn_settings"
+        },
+        "returnAll": false,
+        "limit": 1
+      }
+    },
+    {
+      "id": "f90f6764-6b5a-4d6b-93b0-ae745d3d0be0",
+      "name": "Get Members",
+      "type": "n8n-nodes-base.dataTable",
+      "typeVersion": 1.1,
+      "position": [
+        480,
+        200
+      ],
+      "parameters": {
+        "resource": "row",
+        "operation": "get",
+        "dataTableId": {
+          "__rl": true,
+          "mode": "id",
+          "value": "SELECT_CHURN_MEMBERS_TABLE",
+          "cachedResultName": "churn_members"
+        },
+        "returnAll": true
+      },
+      "executeOnce": true,
+      "alwaysOutputData": true
+    },
+    {
+      "id": "5afc3e46-f0fb-400d-abab-06fdaa451545",
+      "name": "Get Outreach",
+      "type": "n8n-nodes-base.dataTable",
+      "typeVersion": 1.1,
+      "position": [
+        720,
+        200
+      ],
+      "parameters": {
+        "resource": "row",
+        "operation": "get",
+        "dataTableId": {
+          "__rl": true,
+          "mode": "id",
+          "value": "SELECT_CHURN_OUTREACH_TABLE",
+          "cachedResultName": "churn_outreach"
+        },
+        "matchType": "allConditions",
+        "filters": {
+          "conditions": [
+            {
+              "keyName": "sent_at",
+              "condition": "gte",
+              "keyValue": "={{ $now.minus(90, \"days\").toISO() }}"
+            }
+          ]
+        },
+        "returnAll": true
+      },
+      "executeOnce": true,
+      "alwaysOutputData": true
+    },
+    {
+      "id": "b0274520-72e4-4b57-abf0-40633d1f0df7",
+      "name": "Get Visits",
+      "type": "n8n-nodes-base.dataTable",
+      "typeVersion": 1.1,
+      "position": [
+        960,
+        200
+      ],
+      "parameters": {
+        "resource": "row",
+        "operation": "get",
+        "dataTableId": {
+          "__rl": true,
+          "mode": "id",
+          "value": "SELECT_CHURN_CHECKINS_TABLE",
+          "cachedResultName": "churn_checkins"
+        },
+        "matchType": "allConditions",
+        "filters": {
+          "conditions": [
+            {
+              "keyName": "checked_in_at",
+              "condition": "gte",
+              "keyValue": "={{ $now.minus(90, \"days\").toISO() }}"
+            }
+          ]
+        },
+        "returnAll": true
+      },
+      "executeOnce": true,
+      "alwaysOutputData": true
+    },
+    {
+      "id": "cde7502c-bb4f-4a7b-9dba-2c8e186dc150",
+      "name": "Build Dashboard Data",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1200,
+        200
+      ],
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "jsCode": "const s = $('Gym Settings').first().json;\nconst DAY = 86400000;\nconst now = Date.now();\nconst members = $('Get Members').all().map(i => i.json).filter(m => m.member_ref);\nconst outreach = $('Get Outreach').all().map(i => i.json).filter(o => o.member_ref && o.sent_at);\nconst visitsByRef = {};\nconst perDay = {};\nfor (let d = 29; d >= 0; d--) perDay[new Date(now - d * DAY).toISOString().slice(0, 10)] = 0;\nlet visitsThisWeek = 0;\nlet visitsLastWeek = 0;\nfor (const item of $input.all()) {\n  const v = item.json;\n  if (!v.member_ref || !v.checked_in_at) continue;\n  const t = new Date(v.checked_in_at).getTime();\n  if (isNaN(t) || t > now) continue;\n  if (!visitsByRef[v.member_ref]) visitsByRef[v.member_ref] = [];\n  visitsByRef[v.member_ref].push(t);\n  const key = new Date(t).toISOString().slice(0, 10);\n  if (key in perDay) perDay[key] += 1;\n  if (now - t <= 7 * DAY) visitsThisWeek += 1;\n  else if (now - t <= 14 * DAY) visitsLastWeek += 1;\n}\nfor (const k of Object.keys(visitsByRef)) visitsByRef[k].sort((a, b) => a - b);\nconst byRef = {};\nfor (const m of members) byRef[m.member_ref] = m;\nconst latest = {};\nfor (const o of outreach) {\n  const t = new Date(o.sent_at).getTime();\n  if (isNaN(t)) continue;\n  if (!latest[o.member_ref] || latest[o.member_ref] < t) latest[o.member_ref] = t;\n}\nconst wins = {};\nlet decided = 0;\nfor (const ref of Object.keys(latest)) {\n  const sent = latest[ref];\n  const back = (visitsByRef[ref] || []).find(t => t > sent && t <= sent + 14 * DAY);\n  if (back) { decided += 1; wins[ref] = { backAt: back, days: Math.max(0, Math.round((back - sent) / DAY)) }; }\n  else if (now - sent >= 14 * DAY) decided += 1;\n}\nlet tried = 0;\nlet returned = 0;\nfor (const o of outreach) {\n  const sent = new Date(o.sent_at).getTime();\n  if (isNaN(sent)) continue;\n  const back = (visitsByRef[o.member_ref] || []).find(t => t > sent && t <= sent + 14 * DAY);\n  if (back) { tried += 1; returned += 1; }\n  else if (now - sent >= 14 * DAY) tried += 1;\n}\nconst fee = ref => Number((byRef[ref] && byRef[ref].monthly_fee) || 0);\nconst wins30 = Object.keys(wins).filter(r => now - wins[r].backAt <= 30 * DAY);\nconst active = members.filter(m => String(m.status || 'active').toLowerCase() === 'active');\nconst scored = active.filter(m => m.risk_level);\nconst high = scored.filter(m => m.risk_level === 'high');\nconst medium = scored.filter(m => m.risk_level === 'medium');\nconst low = scored.filter(m => m.risk_level === 'low');\nconst iso = v => { if (!v) return null; const d = new Date(v); return isNaN(d.getTime()) ? null : d.toISOString(); };\nconst memberRows = members.map(m => ({\n  ref: m.member_ref,\n  status: String(m.status || 'active').toLowerCase(),\n  phone: m.phone || '',\n  name: m.name || m.member_ref,\n  email: m.email || '',\n  plan: m.plan || '',\n  fee: Number(m.monthly_fee || 0),\n  trainer: m.trainer || '',\n  joinDate: iso(m.join_date),\n  lastVisit: iso(m.last_visit),\n  daysSinceVisit: m.last_visit ? Math.floor((now - new Date(m.last_visit).getTime()) / DAY) : null,\n  visits30: m.visits_30d == null ? null : Number(m.visits_30d),\n  visitsPrev60: m.visits_prev_60d == null ? null : Number(m.visits_prev_60d),\n  score: m.risk_score == null ? null : Number(m.risk_score),\n  level: m.risk_level || 'unscored',\n  reasons: m.risk_reasons ? String(m.risk_reasons).split('; ').filter(Boolean) : [],\n  lastOutreachAt: iso(m.last_outreach_at),\n  outreachCount: Number(m.outreach_count || 0),\n  cameBack: !!wins[m.member_ref],\n  recentVisits: (visitsByRef[m.member_ref] || []).filter(t => now - t <= 56 * DAY).map(t => new Date(t).toISOString().slice(0, 10))\n})).sort((a, b) => (b.score ?? -1) - (a.score ?? -1) || b.fee - a.fee);\nconst outreachRows = outreach\n  .map(o => ({\n    ref: o.member_ref,\n    name: o.name || (byRef[o.member_ref] && byRef[o.member_ref].name) || o.member_ref,\n    sentAt: iso(o.sent_at),\n    subject: o.subject || '',\n    message: o.message || '',\n    riskScore: o.risk_score == null ? null : Number(o.risk_score),\n    reasons: o.risk_reasons || '',\n    fee: fee(o.member_ref),\n    cameBack: !!(wins[o.member_ref] && latest[o.member_ref] === new Date(o.sent_at).getTime()),\n    daysToReturn: wins[o.member_ref] ? wins[o.member_ref].days : null,\n    demo: !!o.demo_mode\n  }))\n  .sort((a, b) => String(b.sentAt).localeCompare(String(a.sentAt)))\n  .slice(0, 40);\nconst lastScanAt = scored.reduce((a, m) => { const t = iso(m.scored_at); return t && (!a || t > a) ? t : a; }, null);\nconst stats = {\n  activeMembers: active.length,\n  scoredMembers: scored.length,\n  highRisk: high.length,\n  mediumRisk: medium.length,\n  lowRisk: low.length,\n  monthlyRevenueAtRisk: high.concat(medium).reduce((a, m) => a + Number(m.monthly_fee || 0), 0),\n  membersBackLast30Days: wins30.length,\n  monthlyRevenueWonBackLast30Days: wins30.reduce((a, r) => a + fee(r), 0),\n  winbackRatePercent: tried ? Math.round((returned / tried) * 100) : null,\n  emailsLast7Days: outreach.filter(o => now - new Date(o.sent_at).getTime() <= 7 * DAY).length,\n  emailsTotal90Days: outreach.length,\n  visitsThisWeek,\n  visitsLastWeek\n};\nreturn [{ json: {\n  gym: { name: s.gymName, ownerName: s.ownerName, currency: s.currency || '$', demoMode: !!s.demoMode },\n  settings: { gymName: s.gymName, ownerName: s.ownerName, ownerEmail: s.ownerEmail, senderName: s.senderName, winbackOffer: s.winbackOffer, bookingLink: s.bookingLink || '', currency: s.currency || '$', highRiskScore: s.highRiskScore, mediumRiskScore: s.mediumRiskScore, outreachCooldownDays: s.outreachCooldownDays, maxOutreachPerDay: s.maxOutreachPerDay, maxOutreachPerMember: s.maxOutreachPerMember, demoMode: !!s.demoMode },\n  stats,\n  members: memberRows,\n  outreach: outreachRows,\n  trend: Object.keys(perDay).map(date => ({ date, count: perDay[date] })),\n  lastScanAt,\n  generatedAt: new Date(now).toISOString()\n} }];"
+      }
+    },
+    {
+      "id": "c05ec7fa-884d-4ad9-b54d-b9d77bce3198",
+      "name": "Send Dashboard Data",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.5,
+      "position": [
+        1440,
+        200
+      ],
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ JSON.stringify($json) }}",
+        "options": {
+          "responseHeaders": {
+            "entries": [
+              {
+                "name": "Access-Control-Allow-Origin",
+                "value": "*"
+              },
+              {
+                "name": "Cache-Control",
+                "value": "no-store"
+              }
+            ]
+          }
+        }
+      }
+    },
+    {
+      "id": "be3862d6-bad9-45b4-98b9-2580b6ec3d06",
+      "name": "Dashboard Action Request",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2.1,
+      "position": [
+        0,
+        560
+      ],
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "gym-churn-action",
+        "responseMode": "responseNode",
+        "options": {
+          "allowedOrigins": "*"
+        }
+      },
+      "webhookId": "07b149e6-d716-4b69-b267-5471e96b0ba4"
+    },
+    {
+      "id": "849fd32b-3504-45b0-8ee6-41b5472ae113",
+      "name": "Check Settings",
+      "type": "n8n-nodes-base.dataTable",
+      "typeVersion": 1.1,
+      "position": [
+        240,
+        560
+      ],
+      "parameters": {
+        "resource": "row",
+        "operation": "get",
+        "dataTableId": {
+          "__rl": true,
+          "mode": "id",
+          "value": "SELECT_CHURN_SETTINGS_TABLE",
+          "cachedResultName": "churn_settings"
+        },
+        "returnAll": false,
+        "limit": 1
+      }
+    },
+    {
+      "id": "13b4af2a-d173-436f-8409-8e47239b5ef6",
+      "name": "Which Action?",
+      "type": "n8n-nodes-base.switch",
+      "typeVersion": 3.4,
+      "position": [
+        480,
+        560
+      ],
+      "parameters": {
+        "mode": "rules",
+        "rules": {
+          "values": [
+            {
+              "renameOutput": true,
+              "outputKey": "Run scan",
+              "conditions": {
+                "options": {
+                  "caseSensitive": false,
+                  "leftValue": "",
+                  "typeValidation": "loose"
+                },
+                "conditions": [
+                  {
+                    "leftValue": "={{ $(\"Dashboard Action Request\").first().json.query?.action ?? $(\"Dashboard Action Request\").first().json.body?.action }}",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals"
+                    },
+                    "rightValue": "scan"
+                  }
+                ],
+                "combinator": "and"
+              }
+            },
+            {
+              "renameOutput": true,
+              "outputKey": "Reset demo",
+              "conditions": {
+                "options": {
+                  "caseSensitive": false,
+                  "leftValue": "",
+                  "typeValidation": "loose"
+                },
+                "conditions": [
+                  {
+                    "leftValue": "={{ $(\"Dashboard Action Request\").first().json.query?.action ?? $(\"Dashboard Action Request\").first().json.body?.action }}",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals"
+                    },
+                    "rightValue": "reset"
+                  },
+                  {
+                    "leftValue": "={{ $json.demoMode }}",
+                    "rightValue": "",
+                    "operator": {
+                      "type": "boolean",
+                      "operation": "true",
+                      "singleValue": true
+                    }
+                  }
+                ],
+                "combinator": "and"
+              }
+            },
+            {
+              "renameOutput": true,
+              "outputKey": "Check in",
+              "conditions": {
+                "options": {
+                  "caseSensitive": false,
+                  "leftValue": "",
+                  "typeValidation": "loose"
+                },
+                "conditions": [
+                  {
+                    "leftValue": "={{ $(\"Dashboard Action Request\").first().json.query?.action ?? $(\"Dashboard Action Request\").first().json.body?.action }}",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals"
+                    },
+                    "rightValue": "checkin"
+                  },
+                  {
+                    "leftValue": "={{ $(\"Dashboard Action Request\").first().json.query?.member }}",
+                    "rightValue": "",
+                    "operator": {
+                      "type": "string",
+                      "operation": "notEmpty",
+                      "singleValue": true
+                    }
+                  }
+                ],
+                "combinator": "and"
+              }
+            },
+            {
+              "renameOutput": true,
+              "outputKey": "Change status",
+              "conditions": {
+                "options": {
+                  "caseSensitive": false,
+                  "leftValue": "",
+                  "typeValidation": "loose"
+                },
+                "conditions": [
+                  {
+                    "leftValue": "={{ $(\"Dashboard Action Request\").first().json.query?.action ?? $(\"Dashboard Action Request\").first().json.body?.action }}",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals"
+                    },
+                    "rightValue": "status"
+                  },
+                  {
+                    "leftValue": "={{ $(\"Dashboard Action Request\").first().json.query?.member }}",
+                    "rightValue": "",
+                    "operator": {
+                      "type": "string",
+                      "operation": "notEmpty",
+                      "singleValue": true
+                    }
+                  },
+                  {
+                    "leftValue": "={{ [\"active\",\"frozen\",\"cancelled\"].includes($(\"Dashboard Action Request\").first().json.query?.status) }}",
+                    "rightValue": "",
+                    "operator": {
+                      "type": "boolean",
+                      "operation": "true",
+                      "singleValue": true
+                    }
+                  }
+                ],
+                "combinator": "and"
+              }
+            },
+            {
+              "renameOutput": true,
+              "outputKey": "Save settings",
+              "conditions": {
+                "options": {
+                  "caseSensitive": false,
+                  "leftValue": "",
+                  "typeValidation": "loose"
+                },
+                "conditions": [
+                  {
+                    "leftValue": "={{ $(\"Dashboard Action Request\").first().json.query?.action ?? $(\"Dashboard Action Request\").first().json.body?.action }}",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals"
+                    },
+                    "rightValue": "settings"
+                  }
+                ],
+                "combinator": "and"
+              }
+            }
+          ]
+        },
+        "options": {
+          "fallbackOutput": "extra",
+          "renameFallbackOutput": "Not allowed"
+        }
+      }
+    },
+    {
+      "id": "5ff4e935-4c41-4383-a678-cc1c86f82dc6",
+      "name": "Reply Scan Started",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.5,
+      "position": [
+        720,
+        440
+      ],
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "{ \"ok\": true, \"action\": \"scan\", \"message\": \"Scan started\" }",
+        "options": {
+          "responseHeaders": {
+            "entries": [
+              {
+                "name": "Access-Control-Allow-Origin",
+                "value": "*"
+              }
+            ]
+          }
+        }
+      }
+    },
+    {
+      "id": "ae1964d6-85d9-4cd1-9f53-8dafedbe7626",
+      "name": "Run Daily Churn Scan",
+      "type": "n8n-nodes-base.executeWorkflow",
+      "typeVersion": 1.3,
+      "position": [
+        960,
+        440
+      ],
+      "parameters": {
+        "mode": "once",
+        "source": "database",
+        "workflowId": {
+          "__rl": true,
+          "mode": "id",
+          "value": "SELECT_WORKFLOW_GYM_CHURN_RADAR_1_DAILY_CHURN_SCAN",
+          "cachedResultName": "Gym Churn Radar 1 - Daily Churn Scan"
+        },
+        "options": {
+          "waitForSubWorkflow": false
+        }
+      }
+    },
+    {
+      "id": "0a7364c5-55dc-4fd2-8712-7fca228825a0",
+      "name": "Reply Reset Started",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.5,
+      "position": [
+        720,
+        600
+      ],
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "{ \"ok\": true, \"action\": \"reset\", \"message\": \"Demo gym is being rebuilt\" }",
+        "options": {
+          "responseHeaders": {
+            "entries": [
+              {
+                "name": "Access-Control-Allow-Origin",
+                "value": "*"
+              }
+            ]
+          }
+        }
+      }
+    },
+    {
+      "id": "a9282366-7f4d-4d96-ad38-c8dad6ad64bb",
+      "name": "Rebuild Demo Gym",
+      "type": "n8n-nodes-base.executeWorkflow",
+      "typeVersion": 1.3,
+      "position": [
+        960,
+        600
+      ],
+      "parameters": {
+        "mode": "once",
+        "source": "database",
+        "workflowId": {
+          "__rl": true,
+          "mode": "id",
+          "value": "SELECT_WORKFLOW_GYM_CHURN_RADAR_0_DEMO_GYM_GENERATOR",
+          "cachedResultName": "Gym Churn Radar 0 - Demo Gym Generator"
+        },
+        "options": {
+          "waitForSubWorkflow": false
+        }
+      }
+    },
+    {
+      "id": "579cd0aa-3093-439f-bae0-a4cd6d618b98",
+      "name": "Reply Not Allowed",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.5,
+      "position": [
+        720,
+        1400
+      ],
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "{ \"ok\": false, \"message\": \"Unknown action, or reset is only allowed in demo mode\" }",
+        "options": {
+          "responseCode": 400,
+          "responseHeaders": {
+            "entries": [
+              {
+                "name": "Access-Control-Allow-Origin",
+                "value": "*"
+              }
+            ]
+          }
+        }
+      }
+    },
+    {
+      "id": "a64e0622-1906-4824-952a-06d1c295a4e3",
+      "name": "Sticky Note ba405b3e",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        -40,
+        -60
+      ],
+      "parameters": {
+        "content": "## 🖥️ Dashboard API\nThe web dashboard talks to n8n through these two webhooks:\n- **GET gym-churn-api** returns members, risk scores, win-back emails, ROI stats and the 30-day visit trend\n- **POST gym-churn-action?action=scan** starts the Daily Churn Scan; `?action=reset` rebuilds the demo gym (demo mode only)\n\nSecurity: before loading a real gym, add Header Auth to both webhooks and to the dashboard.",
+        "color": 4,
+        "width": 620,
+        "height": 220
+      }
+    },
+    {
+      "id": "da74f266-8740-4d5b-ba55-d15ecd0c9d6c",
+      "name": "Save Dashboard Check-in",
+      "type": "n8n-nodes-base.dataTable",
+      "typeVersion": 1.1,
+      "position": [
+        960,
+        920
+      ],
+      "parameters": {
+        "resource": "row",
+        "operation": "insert",
+        "dataTableId": {
+          "__rl": true,
+          "mode": "id",
+          "value": "SELECT_CHURN_CHECKINS_TABLE",
+          "cachedResultName": "churn_checkins"
+        },
+        "columns": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "member_ref": "={{ $(\"Dashboard Action Request\").first().json.query.member }}",
+            "checked_in_at": "={{ $now.toISO() }}",
+            "source": "dashboard"
+          },
+          "matchingColumns": [],
+          "schema": [
+            {
+              "id": "member_ref",
+              "displayName": "member_ref",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "checked_in_at",
+              "displayName": "checked_in_at",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "dateTime",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "source",
+              "displayName": "source",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            }
+          ]
+        },
+        "options": {}
+      }
+    },
+    {
+      "id": "3e73c649-b92c-4b5f-822c-8944f49b1546",
+      "name": "Reply Check-in Saved",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.5,
+      "position": [
+        1200,
+        920
+      ],
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "{ \"ok\": true, \"action\": \"checkin\" }",
+        "options": {
+          "responseHeaders": {
+            "entries": [
+              {
+                "name": "Access-Control-Allow-Origin",
+                "value": "*"
+              }
+            ]
+          }
+        }
+      }
+    },
+    {
+      "id": "350be14c-8f56-4d2c-8b85-daf7ee06adae",
+      "name": "Update Member Status",
+      "type": "n8n-nodes-base.dataTable",
+      "typeVersion": 1.1,
+      "position": [
+        960,
+        1080
+      ],
+      "parameters": {
+        "resource": "row",
+        "operation": "update",
+        "dataTableId": {
+          "__rl": true,
+          "mode": "id",
+          "value": "SELECT_CHURN_MEMBERS_TABLE",
+          "cachedResultName": "churn_members"
+        },
+        "matchType": "allConditions",
+        "filters": {
+          "conditions": [
+            {
+              "keyName": "member_ref",
+              "condition": "eq",
+              "keyValue": "={{ $(\"Dashboard Action Request\").first().json.query.member }}"
+            }
+          ]
+        },
+        "columns": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "status": "={{ $(\"Dashboard Action Request\").first().json.query.status }}"
+          },
+          "matchingColumns": [],
+          "schema": [
+            {
+              "id": "status",
+              "displayName": "status",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            }
+          ]
+        },
+        "options": {}
+      },
+      "alwaysOutputData": true
+    },
+    {
+      "id": "289b538f-7e37-4bbc-9a91-17709c8bbea5",
+      "name": "Reply Status Saved",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.5,
+      "position": [
+        1200,
+        1080
+      ],
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "{ \"ok\": true, \"action\": \"status\" }",
+        "options": {
+          "responseHeaders": {
+            "entries": [
+              {
+                "name": "Access-Control-Allow-Origin",
+                "value": "*"
+              }
+            ]
+          }
+        }
+      }
+    },
+    {
+      "id": "c79cb7cb-ecb2-47e5-a096-466b9822e52f",
+      "name": "Update Settings",
+      "type": "n8n-nodes-base.dataTable",
+      "typeVersion": 1.1,
+      "position": [
+        960,
+        1240
+      ],
+      "parameters": {
+        "resource": "row",
+        "operation": "update",
+        "dataTableId": {
+          "__rl": true,
+          "mode": "id",
+          "value": "SELECT_CHURN_SETTINGS_TABLE",
+          "cachedResultName": "churn_settings"
+        },
+        "matchType": "allConditions",
+        "filters": {
+          "conditions": [
+            {
+              "keyName": "id",
+              "condition": "eq",
+              "keyValue": "={{ $(\"Check Settings\").first().json.id }}"
+            }
+          ]
+        },
+        "columns": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "gymName": "={{ String($(\"Dashboard Action Request\").first().json.query?.gymName ?? \"\").trim() || $(\"Check Settings\").first().json.gymName }}",
+            "ownerName": "={{ String($(\"Dashboard Action Request\").first().json.query?.ownerName ?? \"\").trim() || $(\"Check Settings\").first().json.ownerName }}",
+            "ownerEmail": "={{ String($(\"Dashboard Action Request\").first().json.query?.ownerEmail ?? \"\").trim() || $(\"Check Settings\").first().json.ownerEmail }}",
+            "senderName": "={{ String($(\"Dashboard Action Request\").first().json.query?.senderName ?? \"\").trim() || $(\"Check Settings\").first().json.senderName }}",
+            "winbackOffer": "={{ String($(\"Dashboard Action Request\").first().json.query?.winbackOffer ?? \"\").trim() || $(\"Check Settings\").first().json.winbackOffer }}",
+            "bookingLink": "={{ $(\"Dashboard Action Request\").first().json.query?.bookingLink !== undefined ? String($(\"Dashboard Action Request\").first().json.query.bookingLink).trim() : $(\"Check Settings\").first().json.bookingLink }}",
+            "currency": "={{ String($(\"Dashboard Action Request\").first().json.query?.currency ?? \"\").trim() || $(\"Check Settings\").first().json.currency }}",
+            "highRiskScore": "={{ Number($(\"Dashboard Action Request\").first().json.query?.highRiskScore) || $(\"Check Settings\").first().json.highRiskScore }}",
+            "mediumRiskScore": "={{ Number($(\"Dashboard Action Request\").first().json.query?.mediumRiskScore) || $(\"Check Settings\").first().json.mediumRiskScore }}",
+            "outreachCooldownDays": "={{ Number($(\"Dashboard Action Request\").first().json.query?.outreachCooldownDays) || $(\"Check Settings\").first().json.outreachCooldownDays }}",
+            "maxOutreachPerDay": "={{ Number($(\"Dashboard Action Request\").first().json.query?.maxOutreachPerDay) || $(\"Check Settings\").first().json.maxOutreachPerDay }}",
+            "maxOutreachPerMember": "={{ Number($(\"Dashboard Action Request\").first().json.query?.maxOutreachPerMember) || $(\"Check Settings\").first().json.maxOutreachPerMember }}",
+            "demoMode": "={{ $(\"Dashboard Action Request\").first().json.query?.demoMode === undefined ? $(\"Check Settings\").first().json.demoMode : $(\"Dashboard Action Request\").first().json.query.demoMode === \"true\" }}"
+          },
+          "matchingColumns": [],
+          "schema": [
+            {
+              "id": "gymName",
+              "displayName": "gymName",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "ownerName",
+              "displayName": "ownerName",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "ownerEmail",
+              "displayName": "ownerEmail",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "senderName",
+              "displayName": "senderName",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "winbackOffer",
+              "displayName": "winbackOffer",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "bookingLink",
+              "displayName": "bookingLink",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "currency",
+              "displayName": "currency",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "highRiskScore",
+              "displayName": "highRiskScore",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "number",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "mediumRiskScore",
+              "displayName": "mediumRiskScore",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "number",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "outreachCooldownDays",
+              "displayName": "outreachCooldownDays",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "number",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "maxOutreachPerDay",
+              "displayName": "maxOutreachPerDay",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "number",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "maxOutreachPerMember",
+              "displayName": "maxOutreachPerMember",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "number",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "demoMode",
+              "displayName": "demoMode",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "boolean",
+              "canBeUsedToMatch": true
+            }
+          ]
+        },
+        "options": {}
+      },
+      "alwaysOutputData": true
+    },
+    {
+      "id": "ee0c4f11-4201-42f6-80fa-33e531f5f0aa",
+      "name": "Reply Settings Saved",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.5,
+      "position": [
+        1200,
+        1240
+      ],
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "{ \"ok\": true, \"action\": \"settings\" }",
+        "options": {
+          "responseHeaders": {
+            "entries": [
+              {
+                "name": "Access-Control-Allow-Origin",
+                "value": "*"
+              }
+            ]
+          }
+        }
+      }
+    }
+  ],
+  "connections": {
+    "Dashboard Data Request": {
+      "main": [
+        [
+          {
+            "node": "Gym Settings",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Gym Settings": {
+      "main": [
+        [
+          {
+            "node": "Get Members",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Get Members": {
+      "main": [
+        [
+          {
+            "node": "Get Outreach",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Get Outreach": {
+      "main": [
+        [
+          {
+            "node": "Get Visits",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Get Visits": {
+      "main": [
+        [
+          {
+            "node": "Build Dashboard Data",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Build Dashboard Data": {
+      "main": [
+        [
+          {
+            "node": "Send Dashboard Data",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Dashboard Action Request": {
+      "main": [
+        [
+          {
+            "node": "Check Settings",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Check Settings": {
+      "main": [
+        [
+          {
+            "node": "Which Action?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Which Action?": {
+      "main": [
+        [
+          {
+            "node": "Reply Scan Started",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Reply Reset Started",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Save Dashboard Check-in",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Update Member Status",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Update Settings",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Reply Not Allowed",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Reply Scan Started": {
+      "main": [
+        [
+          {
+            "node": "Run Daily Churn Scan",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Reply Reset Started": {
+      "main": [
+        [
+          {
+            "node": "Rebuild Demo Gym",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Save Dashboard Check-in": {
+      "main": [
+        [
+          {
+            "node": "Reply Check-in Saved",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Update Member Status": {
+      "main": [
+        [
+          {
+            "node": "Reply Status Saved",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Update Settings": {
+      "main": [
+        [
+          {
+            "node": "Reply Settings Saved",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "pinData": {}
+}

@@ -1,0 +1,288 @@
+{
+  "name": "Gym Churn Radar 4 - Settings Form",
+  "nodes": [
+    {
+      "id": "8e92a5c5-5847-4db5-a91a-fa0e56c96af3",
+      "name": "Change Settings",
+      "type": "n8n-nodes-base.formTrigger",
+      "typeVersion": 2.6,
+      "position": [
+        0,
+        300
+      ],
+      "parameters": {
+        "formTitle": "Gym Churn Radar settings",
+        "formDescription": "Fill in only what you want to change. Empty fields keep their current value.",
+        "formFields": {
+          "values": [
+            {
+              "fieldName": "gymName",
+              "fieldLabel": "Gym name",
+              "fieldType": "text",
+              "placeholder": "e.g. IronPulse Fitness"
+            },
+            {
+              "fieldName": "ownerName",
+              "fieldLabel": "Owner first name",
+              "fieldType": "text"
+            },
+            {
+              "fieldName": "ownerEmail",
+              "fieldLabel": "Owner email (reports and alerts go here)",
+              "fieldType": "email"
+            },
+            {
+              "fieldName": "senderName",
+              "fieldLabel": "Sender name on win-back emails",
+              "fieldType": "text",
+              "placeholder": "e.g. Sarah from IronPulse Fitness"
+            },
+            {
+              "fieldName": "winbackOffer",
+              "fieldLabel": "Win-back offer",
+              "fieldType": "textarea",
+              "placeholder": "e.g. a free 30-minute session with one of our coaches"
+            },
+            {
+              "fieldName": "bookingLink",
+              "fieldLabel": "Booking link (optional)",
+              "fieldType": "text",
+              "placeholder": "https://..."
+            },
+            {
+              "fieldName": "demoMode",
+              "fieldLabel": "Demo mode",
+              "fieldType": "dropdown",
+              "fieldOptions": {
+                "values": [
+                  {
+                    "option": "Keep current"
+                  },
+                  {
+                    "option": "On - send all emails to the owner"
+                  },
+                  {
+                    "option": "Off - send win-back emails to members"
+                  }
+                ]
+              }
+            }
+          ]
+        },
+        "responseMode": "onReceived",
+        "options": {
+          "appendAttribution": false,
+          "buttonLabel": "Save settings",
+          "path": "gym-churn-settings",
+          "respondWithOptions": {
+            "values": {
+              "respondWith": "text",
+              "formSubmittedText": "Settings saved. They apply to the next scan and report."
+            }
+          }
+        }
+      },
+      "webhookId": "c1b8ea59-5979-485b-9c59-368759d08cdc"
+    },
+    {
+      "id": "75e28f64-173e-4647-8f9a-e0c65cbc9ea4",
+      "name": "Get Current Settings",
+      "type": "n8n-nodes-base.dataTable",
+      "typeVersion": 1.1,
+      "position": [
+        240,
+        300
+      ],
+      "parameters": {
+        "resource": "row",
+        "operation": "get",
+        "dataTableId": {
+          "__rl": true,
+          "mode": "id",
+          "value": "SELECT_CHURN_SETTINGS_TABLE",
+          "cachedResultName": "churn_settings"
+        },
+        "returnAll": false,
+        "limit": 1
+      }
+    },
+    {
+      "id": "41ec9aa3-5e20-48cd-bff1-2277dcbce8d3",
+      "name": "Merge Changes",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        480,
+        300
+      ],
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "jsCode": "const f = $('Change Settings').first().json;\nconst cur = $input.first().json;\nconst val = k => {\n  const v = f[k];\n  return v === undefined || v === null || String(v).trim() === '' ? cur[k] : String(v).trim();\n};\nconst demo = String(f.demoMode || '');\nreturn [{ json: {\n  id: cur.id,\n  gymName: val('gymName'),\n  ownerName: val('ownerName'),\n  ownerEmail: val('ownerEmail'),\n  senderName: val('senderName'),\n  winbackOffer: val('winbackOffer'),\n  bookingLink: val('bookingLink'),\n  demoMode: demo.startsWith('On') ? true : demo.startsWith('Off') ? false : cur.demoMode\n} }];"
+      }
+    },
+    {
+      "id": "800be4de-c752-4711-b96f-cf1b8e6a5e67",
+      "name": "Save Settings",
+      "type": "n8n-nodes-base.dataTable",
+      "typeVersion": 1.1,
+      "position": [
+        720,
+        300
+      ],
+      "parameters": {
+        "resource": "row",
+        "operation": "update",
+        "dataTableId": {
+          "__rl": true,
+          "mode": "id",
+          "value": "SELECT_CHURN_SETTINGS_TABLE",
+          "cachedResultName": "churn_settings"
+        },
+        "matchType": "allConditions",
+        "filters": {
+          "conditions": [
+            {
+              "keyName": "id",
+              "condition": "eq",
+              "keyValue": "={{ $json.id }}"
+            }
+          ]
+        },
+        "columns": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "gymName": "={{ $json.gymName }}",
+            "ownerName": "={{ $json.ownerName }}",
+            "ownerEmail": "={{ $json.ownerEmail }}",
+            "senderName": "={{ $json.senderName }}",
+            "winbackOffer": "={{ $json.winbackOffer }}",
+            "bookingLink": "={{ $json.bookingLink }}",
+            "demoMode": "={{ $json.demoMode }}"
+          },
+          "matchingColumns": [],
+          "schema": [
+            {
+              "id": "gymName",
+              "displayName": "gymName",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "ownerName",
+              "displayName": "ownerName",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "ownerEmail",
+              "displayName": "ownerEmail",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "senderName",
+              "displayName": "senderName",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "winbackOffer",
+              "displayName": "winbackOffer",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "bookingLink",
+              "displayName": "bookingLink",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "demoMode",
+              "displayName": "demoMode",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "boolean",
+              "canBeUsedToMatch": true
+            }
+          ]
+        },
+        "options": {}
+      }
+    },
+    {
+      "id": "145973a0-26ae-45cf-9592-17e5e312adfc",
+      "name": "Sticky Note caa96b67",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        -40,
+        100
+      ],
+      "parameters": {
+        "content": "## ⚙️ Settings Form\nShare this form URL with the gym owner so they can change their gym name, email, offer and demo mode without opening n8n. Empty fields keep their current value. Risk thresholds are edited in the `churn_settings` table.",
+        "color": 4,
+        "width": 520,
+        "height": 180
+      }
+    }
+  ],
+  "connections": {
+    "Change Settings": {
+      "main": [
+        [
+          {
+            "node": "Get Current Settings",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Get Current Settings": {
+      "main": [
+        [
+          {
+            "node": "Merge Changes",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Merge Changes": {
+      "main": [
+        [
+          {
+            "node": "Save Settings",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "pinData": {}
+}

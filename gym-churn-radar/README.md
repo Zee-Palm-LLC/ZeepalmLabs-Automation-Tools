@@ -12,7 +12,7 @@ A retention dashboard for gyms. It shows which members are about to cancel, has 
 3. **Write and send.** Every morning, Claude writes a personal win-back email for each high-risk member and Gmail sends it, with a daily cap and a cooldown per member.
 4. **Track who comes back.** The dashboard records who returned after an email, the win-back rate and the monthly revenue won back.
 
-The React app in this folder is the front end. The engine is a set of n8n workflows (daily scan, weekly report, data import, settings form and dashboard API) that store data in n8n Data Tables and call Claude through n8n AI credits.
+The React app in this folder is the front end. The engine is a set of n8n workflows (daily scan, weekly report, data import, settings form and dashboard API) that store data in n8n Data Tables and call Claude through n8n AI credits. The workflows are in [`n8n/`](n8n), with a step-by-step setup guide.
 
 ## Pages
 
@@ -67,4 +67,5 @@ Deploy to Vercel as a Vite project with **Root Directory** `gym-churn-radar`, **
 - `src/lib/api.js`: switches between the n8n webhooks and the in-browser demo
 - `src/demo/`: the demo gym and the in-browser backend used by the public site
 - `scripts/og.mjs`: draws the link preview image at build time
+- `n8n/`: the seven n8n workflows and how to set them up
 - `media/`: the explainer video

@@ -1,0 +1,612 @@
+{
+  "name": "Gym Churn Radar 0 - Demo Gym Generator",
+  "nodes": [
+    {
+      "id": "cc5dae5b-79a0-4322-a731-7c029c3176dd",
+      "name": "Create Demo Gym",
+      "type": "n8n-nodes-base.manualTrigger",
+      "typeVersion": 1,
+      "position": [
+        0,
+        300
+      ],
+      "parameters": {}
+    },
+    {
+      "id": "d81a548d-92e4-4d1f-8706-70ea51ccd8e4",
+      "name": "Clear Members",
+      "type": "n8n-nodes-base.dataTable",
+      "typeVersion": 1.1,
+      "position": [
+        240,
+        300
+      ],
+      "parameters": {
+        "resource": "table",
+        "operation": "clear",
+        "dataTableId": {
+          "__rl": true,
+          "mode": "id",
+          "value": "SELECT_CHURN_MEMBERS_TABLE",
+          "cachedResultName": "churn_members"
+        }
+      }
+    },
+    {
+      "id": "56d075b0-6be9-40bf-baf4-f4b6912db46d",
+      "name": "Clear Check-ins",
+      "type": "n8n-nodes-base.dataTable",
+      "typeVersion": 1.1,
+      "position": [
+        480,
+        300
+      ],
+      "parameters": {
+        "resource": "table",
+        "operation": "clear",
+        "dataTableId": {
+          "__rl": true,
+          "mode": "id",
+          "value": "SELECT_CHURN_CHECKINS_TABLE",
+          "cachedResultName": "churn_checkins"
+        }
+      }
+    },
+    {
+      "id": "f0e6106b-f916-4418-b7b8-f7996972a0d3",
+      "name": "Clear Outreach Log",
+      "type": "n8n-nodes-base.dataTable",
+      "typeVersion": 1.1,
+      "position": [
+        720,
+        300
+      ],
+      "parameters": {
+        "resource": "table",
+        "operation": "clear",
+        "dataTableId": {
+          "__rl": true,
+          "mode": "id",
+          "value": "SELECT_CHURN_OUTREACH_TABLE",
+          "cachedResultName": "churn_outreach"
+        }
+      }
+    },
+    {
+      "id": "9572e4c4-ac20-4f88-9417-422d9133dfb7",
+      "name": "Generate Demo Members",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        960,
+        300
+      ],
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "jsCode": "const DAY = 86400000;\nconst now = Date.now();\nlet seed = 20240917;\nconst rand = () => { seed = (seed * 1103515245 + 12345) % 2147483648; return seed / 2147483648; };\nconst firstNames = ['Ava','Liam','Mia','Noah','Zara','Omar','Emma','Lucas','Sofia','Ethan','Aisha','Leo','Chloe','Ryan','Hana','Adam','Maya','Jack','Nora','Sam','Lily','Yusuf','Grace','Ben','Ella','Kai','Ruby','Dan','Isla','Max','Fatima','Theo','Jade','Owen','Lena','Ali','Rosa','Finn','Amara','Jonah'];\nconst lastNames = ['Khan','Smith','Garcia','Chen','Patel','Brown','Silva','Novak','Ali','Wright','Rossi','Kim','Hughes','Ahmed','Lopez','Evans','Park','Moore','Costa','Reid'];\nconst plans = [['Basic', 39], ['Standard', 59], ['Premium', 89], ['PT Package', 149]];\nconst trainers = ['Coach Mike', 'Coach Sara', 'Coach Dev'];\nconst profiles = ['loyal','loyal','loyal','loyal','loyal','recovered','recovered','fading','ghost','new'];\nconst out = [];\nfor (let i = 0; i < firstNames.length; i++) {\n  const profile = profiles[Math.floor(rand() * profiles.length)];\n  const plan = plans[Math.floor(rand() * plans.length)];\n  const first = firstNames[i];\n  const last = lastNames[Math.floor(rand() * lastNames.length)];\n  const tenure = profile === 'new' ? 20 + Math.floor(rand() * 25) : 120 + Math.floor(rand() * 600);\n  const stopDay = 16 + Math.floor(rand() * 16);\n  const backDay = 3 + Math.floor(rand() * 20);\n  let outreachDaysAgo = null;\n  if (profile === 'recovered') outreachDaysAgo = backDay + 2 + Math.floor(rand() * 4);\n  if (profile === 'ghost' && stopDay >= 22) outreachDaysAgo = 15;\n  out.push({ json: {\n    member_ref: 'DEMO-' + (1001 + i),\n    name: first + ' ' + last,\n    email: (first + '.' + last).toLowerCase() + '@example.com',\n    phone: '',\n    plan: plan[0],\n    monthly_fee: plan[1],\n    join_date: new Date(now - tenure * DAY).toISOString(),\n    status: 'active',\n    trainer: trainers[i % trainers.length],\n    last_outreach_at: outreachDaysAgo === null ? null : new Date(now - outreachDaysAgo * DAY).toISOString(),\n    outreach_count: outreachDaysAgo === null ? 0 : 1,\n    demo_profile: profile,\n    demo_tenure: tenure,\n    demo_stop_day: stopDay,\n    demo_back_day: backDay,\n    demo_rate: 0.3 + rand() * 0.25\n  } });\n}\nreturn out;"
+      }
+    },
+    {
+      "id": "7f0116fd-3b05-4141-94bf-1a4c2443b304",
+      "name": "Save Demo Members",
+      "type": "n8n-nodes-base.dataTable",
+      "typeVersion": 1.1,
+      "position": [
+        1200,
+        300
+      ],
+      "parameters": {
+        "resource": "row",
+        "operation": "insert",
+        "dataTableId": {
+          "__rl": true,
+          "mode": "id",
+          "value": "SELECT_CHURN_MEMBERS_TABLE",
+          "cachedResultName": "churn_members"
+        },
+        "columns": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "member_ref": "={{ $json.member_ref }}",
+            "name": "={{ $json.name }}",
+            "email": "={{ $json.email }}",
+            "phone": "={{ $json.phone }}",
+            "plan": "={{ $json.plan }}",
+            "monthly_fee": "={{ $json.monthly_fee }}",
+            "join_date": "={{ $json.join_date }}",
+            "status": "={{ $json.status }}",
+            "trainer": "={{ $json.trainer }}",
+            "last_outreach_at": "={{ $json.last_outreach_at }}",
+            "outreach_count": "={{ $json.outreach_count }}"
+          },
+          "matchingColumns": [],
+          "schema": [
+            {
+              "id": "member_ref",
+              "displayName": "member_ref",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "name",
+              "displayName": "name",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "email",
+              "displayName": "email",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "phone",
+              "displayName": "phone",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "plan",
+              "displayName": "plan",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "monthly_fee",
+              "displayName": "monthly_fee",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "number",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "join_date",
+              "displayName": "join_date",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "dateTime",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "status",
+              "displayName": "status",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "trainer",
+              "displayName": "trainer",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "last_outreach_at",
+              "displayName": "last_outreach_at",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "dateTime",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "outreach_count",
+              "displayName": "outreach_count",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "number",
+              "canBeUsedToMatch": true
+            }
+          ]
+        },
+        "options": {}
+      }
+    },
+    {
+      "id": "ddb346c5-b77b-4a27-8f02-cb7fd3fbebd3",
+      "name": "Generate 90 Days of Visits",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1440,
+        300
+      ],
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "jsCode": "const DAY = 86400000;\nconst now = Date.now();\nlet seed = 777;\nconst rand = () => { seed = (seed * 1103515245 + 12345) % 2147483648; return seed / 2147483648; };\nconst out = [];\nfor (const item of $('Generate Demo Members').all()) {\n  const m = item.json;\n  const days = Math.min(90, m.demo_tenure);\n  for (let d = days; d >= 0; d--) {\n    let p = m.demo_rate;\n    if (m.demo_profile === 'fading' && d <= 30) p = 0.06;\n    if (m.demo_profile === 'ghost' && d <= m.demo_stop_day) p = 0;\n    if (m.demo_profile === 'new') p = (m.demo_tenure - d) <= 10 ? 0.35 : 0.05;\n    if (m.demo_profile === 'recovered' && d <= 32 && d > m.demo_back_day) p = 0;\n    if (m.demo_profile === 'recovered' && d === m.demo_back_day) p = 1;\n    if (rand() < p) {\n      const t = now - d * DAY - Math.floor(rand() * 14 + 6) * 3600000;\n      if (t < now) out.push({ json: { member_ref: m.member_ref, checked_in_at: new Date(t).toISOString(), source: 'demo' } });\n    }\n  }\n}\nreturn out;"
+      }
+    },
+    {
+      "id": "fc37cb33-701a-480c-ae42-62496a09b512",
+      "name": "Save Demo Visits",
+      "type": "n8n-nodes-base.dataTable",
+      "typeVersion": 1.1,
+      "position": [
+        1680,
+        300
+      ],
+      "parameters": {
+        "resource": "row",
+        "operation": "insert",
+        "dataTableId": {
+          "__rl": true,
+          "mode": "id",
+          "value": "SELECT_CHURN_CHECKINS_TABLE",
+          "cachedResultName": "churn_checkins"
+        },
+        "columns": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "member_ref": "={{ $json.member_ref }}",
+            "checked_in_at": "={{ $json.checked_in_at }}",
+            "source": "={{ $json.source }}"
+          },
+          "matchingColumns": [],
+          "schema": [
+            {
+              "id": "member_ref",
+              "displayName": "member_ref",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "checked_in_at",
+              "displayName": "checked_in_at",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "dateTime",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "source",
+              "displayName": "source",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            }
+          ]
+        },
+        "options": {
+          "optimizeBulk": true
+        }
+      }
+    },
+    {
+      "id": "51c97072-2c84-4908-bc2f-22e2fd4a896f",
+      "name": "Generate Past Outreach",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1920,
+        300
+      ],
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "jsCode": "const NL = String.fromCharCode(10);\nconst out = [];\nfor (const item of $('Generate Demo Members').all()) {\n  const m = item.json;\n  if (!m.last_outreach_at) continue;\n  const first = m.name.split(' ')[0];\n  out.push({ json: {\n    member_ref: m.member_ref,\n    name: m.name,\n    email: m.email,\n    sent_at: m.last_outreach_at,\n    risk_score: m.demo_profile === 'ghost' ? 85 : 75,\n    risk_level: 'high',\n    risk_reasons: m.demo_profile === 'ghost' ? 'No visit in 21 days; Visits down 100%' : 'No visit in 18 days; Visits down 80%',\n    monthly_fee: m.monthly_fee,\n    subject: 'Your usual spot is waiting',\n    message: ['Hi ' + first + ',', '', 'We have missed seeing you at the gym lately. Restarting is often the hardest part, so we would love to offer you a free 30-minute session with one of our coaches.', '', 'Just reply to this email and we will set it up.', '', 'Sarah'].join(NL),\n    sent_to: 'demo',\n    demo_mode: true\n  } });\n}\nreturn out;"
+      }
+    },
+    {
+      "id": "94fc6940-a21d-4662-b800-f73933b9aec5",
+      "name": "Save Past Outreach",
+      "type": "n8n-nodes-base.dataTable",
+      "typeVersion": 1.1,
+      "position": [
+        2160,
+        300
+      ],
+      "parameters": {
+        "resource": "row",
+        "operation": "insert",
+        "dataTableId": {
+          "__rl": true,
+          "mode": "id",
+          "value": "SELECT_CHURN_OUTREACH_TABLE",
+          "cachedResultName": "churn_outreach"
+        },
+        "columns": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "member_ref": "={{ $json.member_ref }}",
+            "name": "={{ $json.name }}",
+            "email": "={{ $json.email }}",
+            "sent_at": "={{ $json.sent_at }}",
+            "risk_score": "={{ $json.risk_score }}",
+            "risk_level": "={{ $json.risk_level }}",
+            "risk_reasons": "={{ $json.risk_reasons }}",
+            "monthly_fee": "={{ $json.monthly_fee }}",
+            "subject": "={{ $json.subject }}",
+            "message": "={{ $json.message }}",
+            "sent_to": "={{ $json.sent_to }}",
+            "demo_mode": "={{ $json.demo_mode }}"
+          },
+          "matchingColumns": [],
+          "schema": [
+            {
+              "id": "member_ref",
+              "displayName": "member_ref",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "name",
+              "displayName": "name",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "email",
+              "displayName": "email",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "sent_at",
+              "displayName": "sent_at",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "dateTime",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "risk_score",
+              "displayName": "risk_score",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "number",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "risk_level",
+              "displayName": "risk_level",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "risk_reasons",
+              "displayName": "risk_reasons",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "monthly_fee",
+              "displayName": "monthly_fee",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "number",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "subject",
+              "displayName": "subject",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "message",
+              "displayName": "message",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "sent_to",
+              "displayName": "sent_to",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "demo_mode",
+              "displayName": "demo_mode",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "boolean",
+              "canBeUsedToMatch": true
+            }
+          ]
+        },
+        "options": {}
+      }
+    },
+    {
+      "id": "3768fc6d-6058-4be0-bb40-b795f9c33182",
+      "name": "Sticky Note a7a27621",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        -40,
+        -60
+      ],
+      "parameters": {
+        "content": "## 🏋️ Demo Gym Generator\nClick **Execute workflow** to (re)create a realistic demo gym: 40 members, 90 days of visits and past win-back emails.\n\nProfiles: *loyal* regulars, *recovered* members who came back after a win-back email, *fading* members whose visits dropped, *ghosts* who stopped coming, and *new* members who never built a habit.\n\n⚠️ This **clears** the members, visits and outreach tables first. Use it for demos and testing only, never after importing a real gym.",
+        "color": 4,
+        "width": 720,
+        "height": 320
+      }
+    },
+    {
+      "id": "2b73454c-aff0-4718-8306-3326ed095e1b",
+      "name": "When Started From Dashboard",
+      "type": "n8n-nodes-base.executeWorkflowTrigger",
+      "typeVersion": 1.2,
+      "position": [
+        0,
+        520
+      ],
+      "parameters": {
+        "inputSource": "passthrough"
+      }
+    }
+  ],
+  "connections": {
+    "Create Demo Gym": {
+      "main": [
+        [
+          {
+            "node": "Clear Members",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Clear Members": {
+      "main": [
+        [
+          {
+            "node": "Clear Check-ins",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Clear Check-ins": {
+      "main": [
+        [
+          {
+            "node": "Clear Outreach Log",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Clear Outreach Log": {
+      "main": [
+        [
+          {
+            "node": "Generate Demo Members",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Generate Demo Members": {
+      "main": [
+        [
+          {
+            "node": "Save Demo Members",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Save Demo Members": {
+      "main": [
+        [
+          {
+            "node": "Generate 90 Days of Visits",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Generate 90 Days of Visits": {
+      "main": [
+        [
+          {
+            "node": "Save Demo Visits",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Save Demo Visits": {
+      "main": [
+        [
+          {
+            "node": "Generate Past Outreach",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Generate Past Outreach": {
+      "main": [
+        [
+          {
+            "node": "Save Past Outreach",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "When Started From Dashboard": {
+      "main": [
+        [
+          {
+            "node": "Clear Members",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "pinData": {}
+}

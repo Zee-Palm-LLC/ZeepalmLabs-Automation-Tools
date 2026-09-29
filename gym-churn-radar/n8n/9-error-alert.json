@@ -1,0 +1,111 @@
+{
+  "name": "Gym Churn Radar 9 - Error Alert",
+  "nodes": [
+    {
+      "id": "8f8bbf59-93fb-45e9-8fc8-629c96b23071",
+      "name": "When Any Radar Workflow Fails",
+      "type": "n8n-nodes-base.errorTrigger",
+      "typeVersion": 1,
+      "position": [
+        0,
+        300
+      ],
+      "parameters": {}
+    },
+    {
+      "id": "ec3210cc-1c8c-4e9e-acc5-29212e815142",
+      "name": "Gym Settings",
+      "type": "n8n-nodes-base.dataTable",
+      "typeVersion": 1.1,
+      "position": [
+        240,
+        300
+      ],
+      "parameters": {
+        "resource": "row",
+        "operation": "get",
+        "dataTableId": {
+          "__rl": true,
+          "mode": "id",
+          "value": "SELECT_CHURN_SETTINGS_TABLE",
+          "cachedResultName": "churn_settings"
+        },
+        "returnAll": false,
+        "limit": 1
+      }
+    },
+    {
+      "id": "0cf6a355-e38c-4ae3-9030-bb04cc27f24e",
+      "name": "Email Error Alert",
+      "type": "n8n-nodes-base.gmail",
+      "typeVersion": 2.2,
+      "position": [
+        480,
+        300
+      ],
+      "parameters": {
+        "resource": "message",
+        "operation": "send",
+        "sendTo": "={{ $json.ownerEmail }}",
+        "subject": "=Gym Churn Radar needs attention: {{ $(\"When Any Radar Workflow Fails\").item.json.workflow?.name ?? \"a workflow\" }} failed",
+        "emailType": "html",
+        "message": "=<div style=\"font-family:Arial,Helvetica,sans-serif;max-width:640px\"><h2 style=\"color:#b42318;margin:0 0 8px\">A Gym Churn Radar workflow failed</h2><p><strong>Workflow:</strong> {{ $(\"When Any Radar Workflow Fails\").item.json.workflow?.name ?? \"unknown\" }}<br><strong>Step:</strong> {{ $(\"When Any Radar Workflow Fails\").item.json.execution?.lastNodeExecuted ?? \"unknown\" }}<br><strong>Error:</strong> {{ $(\"When Any Radar Workflow Fails\").item.json.execution?.error?.message ?? \"unknown\" }}<br><strong>Time:</strong> {{ $now.toFormat(\"d LLL yyyy, HH:mm\") }}</p><p><a href=\"{{ $(\"When Any Radar Workflow Fails\").item.json.execution?.url ?? \"\" }}\">Open the failed run in n8n</a></p><p style=\"color:#667085;font-size:13px\">Common causes: an expired Gmail connection, AI credits used up, or a CSV with unexpected columns. Fix it, then use Retry on the failed run.</p></div>",
+        "options": {
+          "appendAttribution": false,
+          "senderName": "Gym Churn Radar"
+        }
+      },
+      "webhookId": "2e9fd479-4d99-4c0b-9b2a-b8a93f83741b",
+      "credentials": {
+        "gmailOAuth2": {
+          "id": "",
+          "name": "Gmail account"
+        }
+      }
+    },
+    {
+      "id": "ccf83db1-f83f-44fd-8664-37746d7e2293",
+      "name": "Sticky Note abcade49",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        -40,
+        80
+      ],
+      "parameters": {
+        "content": "## 🚨 Error Alert\nRuns automatically whenever any Gym Churn Radar workflow fails in production, and emails the owner email from **churn_settings** with what broke and a link to the failed run.",
+        "color": 3,
+        "width": 520,
+        "height": 180
+      }
+    }
+  ],
+  "connections": {
+    "When Any Radar Workflow Fails": {
+      "main": [
+        [
+          {
+            "node": "Gym Settings",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Gym Settings": {
+      "main": [
+        [
+          {
+            "node": "Email Error Alert",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "pinData": {}
+}
