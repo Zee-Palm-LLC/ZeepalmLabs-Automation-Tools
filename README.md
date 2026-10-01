@@ -14,3 +14,7 @@ Automations built by Zeepalm Labs with n8n and AI. Each folder is a self-contain
 1. Create a folder at the root, named in lowercase with dashes (for example `lead-follow-up`).
 2. Give it a `README.md` that says what it does, how to run it and how to deploy it.
 3. Add a row to the table above.
+
+## License
+
+[MIT](LICENSE). Every automation in this repo can be used, changed and shared freely.
