@@ -305,12 +305,12 @@ export function buildDemo(now, settings = DEFAULT_SETTINGS) {
   waitAdd(scripted.owen, 'cleaning', { addedAt: iso(now - 27 * DAY), window: 'any' });
   waitAdd(scripted.elena, 'cleaning', { addedAt: iso(now - 8 * DAY), window: 'mornings' });
   const waitPool = pool.filter(p => !s.waitlist.some(w => w.patientId === p.id) && p.noShows < 2);
-  for (let i = 0; i < 13; i++) {
+  for (let i = 0; i < 24; i++) {
     const p = waitPool[(i * 7 + 3) % waitPool.length];
     if (s.waitlist.some(w => w.patientId === p.id)) continue;
-    const t = types[i % types.length];
+    const t = i >= 13 ? 'cleaning' : types[i % types.length];
     const prov = t === 'cleaning' ? 'any' : r() < 0.4 ? pick(['patel', 'okafor']) : 'any';
-    waitAdd(p, t, { window: pick(windows), provider: prov, days: r() < 0.2 ? [2, 4] : null, priority: t === 'crown' && i % 2 === 0, note: t === 'crown' ? 'Temporary crown, wants it done soon' : '' });
+    waitAdd(p, t, { window: i >= 13 ? 'any' : pick(windows), provider: prov, days: r() < 0.2 ? [2, 4] : null, priority: t === 'crown' && i % 2 === 0, note: t === 'crown' ? 'Temporary crown, wants it done soon' : '' });
   }
 
   const recent = s.appts.filter(a => {

@@ -189,7 +189,8 @@ function respond(s, p, body, now, msg, hint = {}) {
       p.pending = null;
       mark('reschedule');
       res.apptId = moved.id;
-      say('Done. You’re now booked ' + whenLabel(moved.start, now) + ' with ' + providerOf(S, moved.provider).short + '. ' + (pend.rebook ? 'See you then!' : 'Your old time has gone to someone on our waitlist, so thank you for letting us know.'));
+      const offered = s.offers.some(o => o.apptId === pend.apptId && o.status === 'open');
+      say('Done. You’re now booked ' + whenLabel(moved.start, now) + ' with ' + providerOf(S, moved.provider).short + '. ' + (pend.rebook ? 'See you then!' : offered ? 'Your old time is going to someone on our waitlist, so thank you for letting us know.' : 'Thanks for letting us know.'));
       return res;
     }
   }

@@ -24,7 +24,8 @@ const ICONS = {
   flag: { icon: FirstAidKit, tone: 'red' },
   cancelled: { icon: CalendarX, tone: 'amber' },
   other: { icon: ChatCircle, tone: 'violet' },
-  late: { icon: ChatCircle, tone: 'quiet' }
+  late: { icon: ChatCircle, tone: 'quiet' },
+  released: { icon: CalendarX, tone: 'quiet' }
 };
 
 function relatedOffers(data, sim) {
@@ -80,7 +81,8 @@ function noteTitle(m) {
     refilled: 'Your old time was refilled',
     flag: 'Flagged for a person',
     cancelled: 'Visit cancelled',
-    late: 'Front desk told'
+    late: 'Front desk told',
+    released: 'Your old time was released'
   }[m.kind] || m.body;
 }
 
