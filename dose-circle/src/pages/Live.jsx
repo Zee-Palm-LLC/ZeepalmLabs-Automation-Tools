@@ -24,9 +24,11 @@ const INTENT = {
 
 function events(data, sim) {
   const ids = [sim.personId, ...data.circle.map(m => m.id)];
+  const fresh = (sim.startedAt || 0) - 1500;
   const out = [];
   for (const m of data.messages) {
     if (!ids.includes(m.thread) || Date.parse(m.at) < sim.since) continue;
+    if (m.thread !== sim.personId && Date.parse(m.at) < fresh) continue;
     const p = personOf(data, m.thread);
     const mem = memberOf(data, m.thread);
     const name = first((p || mem || {}).name);
@@ -46,7 +48,9 @@ function events(data, sim) {
 export default function Live() {
   const { data, now, sim, setSim, startDemo, sendAs, endSim, visible, typing, act, busy } = useCare();
   const [pick, setPick] = useState(sim.scenario || 'quiet');
-  const [step, setStep] = useState(0);
+  const [prog, setProg] = useState({ at: null, step: 0 });
+  const step = prog.at === sim.startedAt ? prog.step : 0;
+  const setStep = fn => setProg(p => ({ at: sim.startedAt, step: fn(p.at === sim.startedAt ? p.step : 0) }));
   const [drafts, setDrafts] = useState({ person: '', member: '' });
   const runner = useRef({ key: null, timer: null });
   const running = sim.phase === 'running';
@@ -58,7 +62,6 @@ export default function Live() {
   useEffect(() => {
     clearTimeout(runner.current.timer);
     runner.current.key = null;
-    setStep(0);
     setDrafts({ person: '', member: '' });
   }, [sim.startedAt]);
 
@@ -212,7 +215,7 @@ export default function Live() {
           key={'m' + (sim.startedAt || 0)}
           owner={member}
           thread={running ? sim.memberId : null}
-          since={sim.since}
+          since={Math.max(sim.since || 0, (sim.startedAt || 0) - 1500)}
           caption={first(member.name) + '’s phone'}
           note={member.relation + ', ' + (member.note || 'primary contact').toLowerCase()}
           draft={drafts.member}
