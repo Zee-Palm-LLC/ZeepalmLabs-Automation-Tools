@@ -1,0 +1,418 @@
+{
+  "name": "Dose Circle 2 - Replies",
+  "nodes": [
+    {
+      "id": "62da859e-bf02-416c-8787-a1773ed4ca1e",
+      "name": "Twilio Incoming Text",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2.1,
+      "position": [
+        0,
+        0
+      ],
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "dc-sms",
+        "responseMode": "responseNode",
+        "options": {
+          "allowedOrigins": "*"
+        }
+      },
+      "webhookId": "b0d49c88-0afe-4322-8eef-368853b6d9d5"
+    },
+    {
+      "id": "526f6766-9cde-4522-a20a-64cb4ce2ffb2",
+      "name": "Acknowledge Twilio",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.5,
+      "position": [
+        224,
+        0
+      ],
+      "parameters": {
+        "respondWith": "text",
+        "responseBody": "<Response></Response>",
+        "options": {
+          "responseHeaders": {
+            "entries": [
+              {
+                "name": "Content-Type",
+                "value": "text/xml"
+              }
+            ]
+          }
+        }
+      }
+    },
+    {
+      "id": "f861bd3d-5796-4067-ab6e-983d03570eb2",
+      "name": "Text Details",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        448,
+        96
+      ],
+      "parameters": {
+        "jsCode": "const j = $input.first().json;\nconst b = j.body && typeof j.body === 'object' ? j.body : null;\nreturn [{ json: {\n  phone: String(b ? b.From || '' : j.phone || '').trim(),\n  text: String(b ? b.Body || '' : j.text || '').trim().slice(0, 480),\n  via: b ? 'twilio' : 'dashboard'\n} }];\n"
+      }
+    },
+    {
+      "id": "66815f2c-7c8c-47b5-8baf-e8051eb31ec7",
+      "name": "When Called by the Dashboard",
+      "type": "n8n-nodes-base.executeWorkflowTrigger",
+      "typeVersion": 1.2,
+      "position": [
+        224,
+        192
+      ],
+      "parameters": {
+        "inputSource": "workflowInputs",
+        "workflowInputs": {
+          "values": [
+            {
+              "name": "phone",
+              "type": "string"
+            },
+            {
+              "name": "text",
+              "type": "string"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "77e9972f-5499-4782-8f74-71d4759e6369",
+      "name": "Prepare the Reply",
+      "type": "n8n-nodes-base.executeWorkflow",
+      "typeVersion": 1.3,
+      "position": [
+        672,
+        96
+      ],
+      "parameters": {
+        "mode": "once",
+        "source": "database",
+        "workflowId": {
+          "__rl": true,
+          "mode": "id",
+          "value": "SELECT_WORKFLOW_DOSE_CIRCLE_0_ENGINE",
+          "cachedResultName": "Dose Circle 0 - Engine"
+        },
+        "workflowInputs": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "op": "=prepare",
+            "payload": "={{ JSON.stringify({ phone: $json.phone, text: $json.text }) }}"
+          },
+          "matchingColumns": [],
+          "schema": [
+            {
+              "id": "op",
+              "displayName": "op",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "canBeUsedToMatch": true,
+              "type": "string"
+            },
+            {
+              "id": "payload",
+              "displayName": "payload",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "canBeUsedToMatch": true,
+              "type": "string"
+            }
+          ],
+          "attemptToConvertTypes": false,
+          "convertFieldsToString": true
+        },
+        "options": {
+          "waitForSubWorkflow": true
+        }
+      }
+    },
+    {
+      "id": "1491da8d-26f1-4677-95b8-dfad32334998",
+      "name": "Ask Claude?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        896,
+        96
+      ],
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "loose"
+          },
+          "conditions": [
+            {
+              "leftValue": "={{ $json.result.useAi }}",
+              "rightValue": "",
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        }
+      }
+    },
+    {
+      "id": "7d593e84-1537-4827-bf70-62526b97acea",
+      "name": "Claude Reads the Text",
+      "type": "@n8n/n8n-nodes-langchain.anthropic",
+      "typeVersion": 1,
+      "position": [
+        1120,
+        32
+      ],
+      "parameters": {
+        "resource": "text",
+        "operation": "message",
+        "modelId": {
+          "__rl": true,
+          "mode": "id",
+          "value": "={{ $json.result.model }}"
+        },
+        "messages": {
+          "values": [
+            {
+              "content": "={{ $json.result.user_prompt }}",
+              "role": "user"
+            }
+          ]
+        },
+        "simplify": true,
+        "options": {
+          "system": "={{ $json.result.system_prompt }}",
+          "maxTokens": 400
+        }
+      },
+      "retryOnFail": true,
+      "maxTries": 2,
+      "onError": "continueRegularOutput"
+    },
+    {
+      "id": "20247bed-97e0-49e6-8ed2-42f129bd469e",
+      "name": "Handle the Text",
+      "type": "n8n-nodes-base.executeWorkflow",
+      "typeVersion": 1.3,
+      "position": [
+        1344,
+        96
+      ],
+      "parameters": {
+        "mode": "once",
+        "source": "database",
+        "workflowId": {
+          "__rl": true,
+          "mode": "id",
+          "value": "SELECT_WORKFLOW_DOSE_CIRCLE_0_ENGINE",
+          "cachedResultName": "Dose Circle 0 - Engine"
+        },
+        "workflowInputs": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "op": "=handle",
+            "payload": "={{ JSON.stringify({ phone: $('Text Details').first().json.phone, text: $('Text Details').first().json.text, ai: $json.content || null }) }}"
+          },
+          "matchingColumns": [],
+          "schema": [
+            {
+              "id": "op",
+              "displayName": "op",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "canBeUsedToMatch": true,
+              "type": "string"
+            },
+            {
+              "id": "payload",
+              "displayName": "payload",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "canBeUsedToMatch": true,
+              "type": "string"
+            }
+          ],
+          "attemptToConvertTypes": false,
+          "convertFieldsToString": true
+        },
+        "options": {
+          "waitForSubWorkflow": true
+        }
+      }
+    },
+    {
+      "id": "079e04ab-3980-4e96-ae15-5052ccf8f719",
+      "name": "Texts to Send",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1568,
+        96
+      ],
+      "parameters": {
+        "jsCode": "const j = $input.first().json;\nconst out = (j.texts || []).map(t => ({ json: { from: j.from, to: t.to, text: t.body } }));\nreturn j.send ? out : [];\n"
+      }
+    },
+    {
+      "id": "3df5527b-c1e7-4a6a-abf1-77c041eb652e",
+      "name": "Send the Texts",
+      "type": "n8n-nodes-base.twilio",
+      "typeVersion": 1,
+      "position": [
+        1792,
+        96
+      ],
+      "parameters": {
+        "resource": "sms",
+        "operation": "send",
+        "from": "={{ $json.from }}",
+        "to": "={{ $json.to }}",
+        "message": "={{ $json.text }}",
+        "options": {}
+      },
+      "retryOnFail": true,
+      "maxTries": 2,
+      "onError": "continueRegularOutput"
+    },
+    {
+      "id": "411b42b0-2f71-41a5-9faf-5a42f6dce2ef",
+      "name": "Sticky Note b34bd067",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        832,
+        192
+      ],
+      "parameters": {
+        "content": "## Replies from Mom, Dad and the family\nEvery text sent to the Dose Circle number lands here. Chest pain, falls, trouble breathing, an extra dose, STOP and START are caught by fixed rules first, so an emergency never waits on the AI.\n\nEverything else goes to Claude, which only describes the message: taken, partly taken with which pill, later, a reading, running low, not feeling well, or a question. The answer itself comes from tested rules and the real medicine list. Claude never gives medical advice.",
+        "color": 7
+      }
+    }
+  ],
+  "connections": {
+    "Twilio Incoming Text": {
+      "main": [
+        [
+          {
+            "node": "Acknowledge Twilio",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Acknowledge Twilio": {
+      "main": [
+        [
+          {
+            "node": "Text Details",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Text Details": {
+      "main": [
+        [
+          {
+            "node": "Prepare the Reply",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "When Called by the Dashboard": {
+      "main": [
+        [
+          {
+            "node": "Text Details",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Prepare the Reply": {
+      "main": [
+        [
+          {
+            "node": "Ask Claude?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Ask Claude?": {
+      "main": [
+        [
+          {
+            "node": "Claude Reads the Text",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Handle the Text",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Claude Reads the Text": {
+      "main": [
+        [
+          {
+            "node": "Handle the Text",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Handle the Text": {
+      "main": [
+        [
+          {
+            "node": "Texts to Send",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Texts to Send": {
+      "main": [
+        [
+          {
+            "node": "Send the Texts",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "pinData": {}
+}

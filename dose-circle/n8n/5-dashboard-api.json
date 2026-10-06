@@ -1,0 +1,395 @@
+{
+  "name": "Dose Circle 5 - Dashboard API",
+  "nodes": [
+    {
+      "id": "0928b215-1070-4c05-b7fc-b168a80ab90c",
+      "name": "Dashboard Data",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2.1,
+      "position": [
+        0,
+        0
+      ],
+      "parameters": {
+        "httpMethod": "GET",
+        "path": "dc-api",
+        "responseMode": "responseNode",
+        "options": {
+          "allowedOrigins": "*"
+        }
+      },
+      "webhookId": "7e7aaa1f-926b-40dd-8379-d68e87fc7a5e"
+    },
+    {
+      "id": "51f9358e-75ef-4b0c-8467-6b19fbaa1124",
+      "name": "Read the Household",
+      "type": "n8n-nodes-base.executeWorkflow",
+      "typeVersion": 1.3,
+      "position": [
+        224,
+        0
+      ],
+      "parameters": {
+        "mode": "once",
+        "source": "database",
+        "workflowId": {
+          "__rl": true,
+          "mode": "id",
+          "value": "SELECT_WORKFLOW_DOSE_CIRCLE_0_ENGINE",
+          "cachedResultName": "Dose Circle 0 - Engine"
+        },
+        "workflowInputs": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "op": "=read",
+            "payload": "={}"
+          },
+          "matchingColumns": [],
+          "schema": [
+            {
+              "id": "op",
+              "displayName": "op",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "canBeUsedToMatch": true,
+              "type": "string"
+            },
+            {
+              "id": "payload",
+              "displayName": "payload",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "canBeUsedToMatch": true,
+              "type": "string"
+            }
+          ],
+          "attemptToConvertTypes": false,
+          "convertFieldsToString": true
+        },
+        "options": {
+          "waitForSubWorkflow": true
+        }
+      }
+    },
+    {
+      "id": "4e09514e-531b-456a-a19b-41869987bbe5",
+      "name": "Send Dashboard Data",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.5,
+      "position": [
+        448,
+        0
+      ],
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ $json.result }}",
+        "options": {}
+      }
+    },
+    {
+      "id": "e8f307b2-6628-406c-a2ad-a3d3dfe596a5",
+      "name": "Dashboard Action",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2.1,
+      "position": [
+        0,
+        416
+      ],
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "dc-action",
+        "responseMode": "responseNode",
+        "options": {
+          "allowedOrigins": "*"
+        }
+      },
+      "webhookId": "03bf53a6-01f6-4f95-bc10-488b21ee3720"
+    },
+    {
+      "id": "dd1044dd-5f4a-4aea-8023-5223be7be998",
+      "name": "Run the Action",
+      "type": "n8n-nodes-base.executeWorkflow",
+      "typeVersion": 1.3,
+      "position": [
+        224,
+        416
+      ],
+      "parameters": {
+        "mode": "once",
+        "source": "database",
+        "workflowId": {
+          "__rl": true,
+          "mode": "id",
+          "value": "SELECT_WORKFLOW_DOSE_CIRCLE_0_ENGINE",
+          "cachedResultName": "Dose Circle 0 - Engine"
+        },
+        "workflowInputs": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "op": "=action",
+            "payload": "={{ JSON.stringify($json.query || {}) }}"
+          },
+          "matchingColumns": [],
+          "schema": [
+            {
+              "id": "op",
+              "displayName": "op",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "canBeUsedToMatch": true,
+              "type": "string"
+            },
+            {
+              "id": "payload",
+              "displayName": "payload",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "canBeUsedToMatch": true,
+              "type": "string"
+            }
+          ],
+          "attemptToConvertTypes": false,
+          "convertFieldsToString": true
+        },
+        "options": {
+          "waitForSubWorkflow": true
+        }
+      }
+    },
+    {
+      "id": "53f6feb5-267f-4420-a72a-f4725793bb09",
+      "name": "Answer the Dashboard",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.5,
+      "position": [
+        448,
+        224
+      ],
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ $json.result }}",
+        "options": {}
+      }
+    },
+    {
+      "id": "05adaf5a-be77-4208-9d53-0ef7f1694224",
+      "name": "Demo Phone Text?",
+      "type": "n8n-nodes-base.filter",
+      "typeVersion": 2.3,
+      "position": [
+        448,
+        416
+      ],
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "loose"
+          },
+          "conditions": [
+            {
+              "leftValue": "={{ !!$json.forward }}",
+              "rightValue": "",
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      }
+    },
+    {
+      "id": "911c6054-6844-4291-9907-eab7d53620f0",
+      "name": "Hand to Replies",
+      "type": "n8n-nodes-base.executeWorkflow",
+      "typeVersion": 1.3,
+      "position": [
+        672,
+        416
+      ],
+      "parameters": {
+        "mode": "once",
+        "source": "database",
+        "workflowId": {
+          "__rl": true,
+          "mode": "id",
+          "value": "SELECT_WORKFLOW_DOSE_CIRCLE_2_REPLIES",
+          "cachedResultName": "Dose Circle 2 - Replies"
+        },
+        "workflowInputs": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "phone": "={{ $json.forward.phone }}",
+            "text": "={{ $json.forward.text }}"
+          },
+          "matchingColumns": [],
+          "schema": [
+            {
+              "id": "phone",
+              "displayName": "phone",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "canBeUsedToMatch": true,
+              "type": "string"
+            },
+            {
+              "id": "text",
+              "displayName": "text",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "canBeUsedToMatch": true,
+              "type": "string"
+            }
+          ],
+          "attemptToConvertTypes": false,
+          "convertFieldsToString": true
+        },
+        "options": {
+          "waitForSubWorkflow": false
+        }
+      },
+      "executeOnce": true
+    },
+    {
+      "id": "aef7eb76-a9d7-4623-ada9-a5c7d63f038a",
+      "name": "Texts to Send",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        448,
+        608
+      ],
+      "parameters": {
+        "jsCode": "const j = $input.first().json;\nconst out = (j.texts || []).map(t => ({ json: { from: j.from, to: t.to, text: t.body } }));\nreturn j.send ? out : [];\n"
+      }
+    },
+    {
+      "id": "98ec68bd-529e-4370-bf78-d026668e163b",
+      "name": "Send the Texts",
+      "type": "n8n-nodes-base.twilio",
+      "typeVersion": 1,
+      "position": [
+        672,
+        608
+      ],
+      "parameters": {
+        "resource": "sms",
+        "operation": "send",
+        "from": "={{ $json.from }}",
+        "to": "={{ $json.to }}",
+        "message": "={{ $json.text }}",
+        "options": {}
+      },
+      "retryOnFail": true,
+      "maxTries": 2,
+      "onError": "continueRegularOutput"
+    },
+    {
+      "id": "279041e9-f41d-45a8-a6c0-2df3dba4c6e5",
+      "name": "Sticky Note 1b37bc34",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        272,
+        608
+      ],
+      "parameters": {
+        "content": "## Dashboard API\nThe React dashboard reads the whole household with one GET and sends every button press as a POST. Both go through the engine. Texts typed on the demo phones are handed to the Replies workflow, the same path a real text takes.",
+        "color": 7
+      }
+    }
+  ],
+  "connections": {
+    "Dashboard Data": {
+      "main": [
+        [
+          {
+            "node": "Read the Household",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Read the Household": {
+      "main": [
+        [
+          {
+            "node": "Send Dashboard Data",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Dashboard Action": {
+      "main": [
+        [
+          {
+            "node": "Run the Action",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Run the Action": {
+      "main": [
+        [
+          {
+            "node": "Answer the Dashboard",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Demo Phone Text?",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Texts to Send",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Demo Phone Text?": {
+      "main": [
+        [
+          {
+            "node": "Hand to Replies",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Texts to Send": {
+      "main": [
+        [
+          {
+            "node": "Send the Texts",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "pinData": {}
+}

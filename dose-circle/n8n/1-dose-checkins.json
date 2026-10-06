@@ -1,0 +1,166 @@
+{
+  "name": "Dose Circle 1 - Dose Check-ins",
+  "nodes": [
+    {
+      "id": "5c44b867-28fc-4914-8f71-3cdd40a5e78f",
+      "name": "Every 5 Minutes",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.2,
+      "position": [
+        0,
+        0
+      ],
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "minutes",
+              "minutesInterval": 5
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "2eecfd30-bc5f-4e90-9741-f1a64d1a9f5b",
+      "name": "Run the Dose Ladder",
+      "type": "n8n-nodes-base.executeWorkflow",
+      "typeVersion": 1.3,
+      "position": [
+        224,
+        0
+      ],
+      "parameters": {
+        "mode": "once",
+        "source": "database",
+        "workflowId": {
+          "__rl": true,
+          "mode": "id",
+          "value": "SELECT_WORKFLOW_DOSE_CIRCLE_0_ENGINE",
+          "cachedResultName": "Dose Circle 0 - Engine"
+        },
+        "workflowInputs": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "op": "=tick",
+            "payload": "={}"
+          },
+          "matchingColumns": [],
+          "schema": [
+            {
+              "id": "op",
+              "displayName": "op",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "canBeUsedToMatch": true,
+              "type": "string"
+            },
+            {
+              "id": "payload",
+              "displayName": "payload",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "canBeUsedToMatch": true,
+              "type": "string"
+            }
+          ],
+          "attemptToConvertTypes": false,
+          "convertFieldsToString": true
+        },
+        "options": {
+          "waitForSubWorkflow": true
+        }
+      }
+    },
+    {
+      "id": "937a86af-05b7-4f0e-abe4-6e2e8c107296",
+      "name": "Texts to Send",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        448,
+        0
+      ],
+      "parameters": {
+        "jsCode": "const j = $input.first().json;\nconst out = (j.texts || []).map(t => ({ json: { from: j.from, to: t.to, text: t.body } }));\nreturn j.send ? out : [];\n"
+      }
+    },
+    {
+      "id": "bb4cb3a9-c1b5-4803-b775-c5687d137222",
+      "name": "Send the Texts",
+      "type": "n8n-nodes-base.twilio",
+      "typeVersion": 1,
+      "position": [
+        672,
+        0
+      ],
+      "parameters": {
+        "resource": "sms",
+        "operation": "send",
+        "from": "={{ $json.from }}",
+        "to": "={{ $json.to }}",
+        "message": "={{ $json.text }}",
+        "options": {}
+      },
+      "retryOnFail": true,
+      "maxTries": 2,
+      "onError": "continueRegularOutput"
+    },
+    {
+      "id": "6a0b591e-43c6-471b-8fec-e82e8fdbdc38",
+      "name": "Sticky Note d6401235",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        272,
+        0
+      ],
+      "parameters": {
+        "content": "## Dose check-ins\nEvery 5 minutes the engine texts each reminder as it comes due, listing every pill by what it looks like.\n\nNo reply after 20 minutes gets one gentle nudge. After 45 minutes the first contact in the family is texted, after 90 minutes the backups, and after 3 hours the dose is logged as missed. Family texts wait for the end of quiet hours. In demo mode nothing is sent.",
+        "color": 7
+      }
+    }
+  ],
+  "connections": {
+    "Every 5 Minutes": {
+      "main": [
+        [
+          {
+            "node": "Run the Dose Ladder",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Run the Dose Ladder": {
+      "main": [
+        [
+          {
+            "node": "Texts to Send",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Texts to Send": {
+      "main": [
+        [
+          {
+            "node": "Send the Texts",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1",
+    "timezone": "America/New_York"
+  },
+  "pinData": {}
+}

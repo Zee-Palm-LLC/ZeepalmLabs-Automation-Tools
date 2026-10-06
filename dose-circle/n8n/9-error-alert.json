@@ -1,0 +1,127 @@
+{
+  "name": "Dose Circle 9 - Error Alert",
+  "nodes": [
+    {
+      "id": "22910848-7234-490a-be3d-982ac2b78f39",
+      "name": "When a Workflow Fails",
+      "type": "n8n-nodes-base.errorTrigger",
+      "typeVersion": 1,
+      "position": [
+        0,
+        0
+      ],
+      "parameters": {}
+    },
+    {
+      "id": "fe5ef7d9-b50c-41c3-8408-172f5629fdda",
+      "name": "Load the Family",
+      "type": "n8n-nodes-base.dataTable",
+      "typeVersion": 1.1,
+      "position": [
+        224,
+        0
+      ],
+      "parameters": {
+        "resource": "row",
+        "operation": "get",
+        "dataTableId": {
+          "__rl": true,
+          "mode": "id",
+          "value": "SELECT_DC_STATE_TABLE",
+          "cachedResultName": "dc_state"
+        },
+        "matchType": "allConditions",
+        "filters": {
+          "conditions": [
+            {
+              "keyName": "kind",
+              "condition": "eq",
+              "keyValue": "member"
+            }
+          ]
+        },
+        "returnAll": true
+      },
+      "executeOnce": true,
+      "alwaysOutputData": true
+    },
+    {
+      "id": "7b05d087-b25e-4ea3-88fc-98b206626c03",
+      "name": "Describe the Error",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        448,
+        0
+      ],
+      "parameters": {
+        "jsCode": "const f = $('When a Workflow Fails').first().json;\nconst members = $('Load the Family').all().map(i => {\n  try {\n    return JSON.parse(i.json.data || '{}');\n  } catch (e) {\n    return {};\n  }\n});\nconst lead = members.find(m => m.role === 'primary' && m.email) || members.find(m => m.email) || {};\nconst nl = String.fromCharCode(10);\nreturn [{ json: {\n  to: lead.email || 'family@example.com',\n  subject: 'Dose Circle: ' + (f.workflow ? f.workflow.name : 'a workflow') + ' failed',\n  text: ['Hi ' + String(lead.name || 'there').split(' ')[0] + ',', '', 'The workflow \"' + (f.workflow ? f.workflow.name : '') + '\" stopped at \"' + (f.execution ? f.execution.lastNodeExecuted : '') + '\". Reminders may not have gone out, so check on Mom and Dad directly.', '', 'Error: ' + (f.execution && f.execution.error ? f.execution.error.message : 'unknown'), '', 'Open the run: ' + (f.execution ? f.execution.url || '' : '')].join(nl)\n} }];\n"
+      },
+      "executeOnce": true
+    },
+    {
+      "id": "4766e5d0-ff31-465c-8c03-76fbc34f570c",
+      "name": "Email the Family",
+      "type": "n8n-nodes-base.gmail",
+      "typeVersion": 2.2,
+      "position": [
+        672,
+        0
+      ],
+      "parameters": {
+        "sendTo": "={{ $json.to }}",
+        "subject": "={{ $json.subject }}",
+        "emailType": "text",
+        "message": "={{ $json.text }}",
+        "options": {
+          "appendAttribution": false
+        }
+      },
+      "credentials": {
+        "gmailOAuth2": {
+          "id": "",
+          "name": "Gmail account"
+        }
+      }
+    }
+  ],
+  "connections": {
+    "When a Workflow Fails": {
+      "main": [
+        [
+          {
+            "node": "Load the Family",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Load the Family": {
+      "main": [
+        [
+          {
+            "node": "Describe the Error",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Describe the Error": {
+      "main": [
+        [
+          {
+            "node": "Email the Family",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "pinData": {}
+}
