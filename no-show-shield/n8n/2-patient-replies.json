@@ -1,0 +1,418 @@
+{
+  "name": "No-Show Shield 2 - Patient Replies",
+  "nodes": [
+    {
+      "id": "88f7a50a-f9d9-4f69-80c2-013e3bc3e0ad",
+      "name": "Twilio Incoming Text",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2.1,
+      "position": [
+        0,
+        0
+      ],
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "nss-sms",
+        "responseMode": "responseNode",
+        "options": {
+          "allowedOrigins": "*"
+        }
+      },
+      "webhookId": "f559d0a9-93d4-480b-9da1-3e5d9bc4590d"
+    },
+    {
+      "id": "3d3b5fae-088c-48ee-aee2-53e0d4c4f3e5",
+      "name": "Acknowledge Twilio",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.5,
+      "position": [
+        224,
+        0
+      ],
+      "parameters": {
+        "respondWith": "text",
+        "responseBody": "<Response></Response>",
+        "options": {
+          "responseHeaders": {
+            "entries": [
+              {
+                "name": "Content-Type",
+                "value": "text/xml"
+              }
+            ]
+          }
+        }
+      }
+    },
+    {
+      "id": "5c53a9ab-6e7d-4898-8331-80d92dbe3083",
+      "name": "Text Details",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        448,
+        96
+      ],
+      "parameters": {
+        "jsCode": "const j = $input.first().json;\nconst b = j.body && typeof j.body === 'object' ? j.body : null;\nreturn [{ json: {\n  phone: String(b ? b.From || '' : j.phone || '').trim(),\n  text: String(b ? b.Body || '' : j.text || '').trim().slice(0, 480),\n  via: b ? 'twilio' : 'dashboard'\n} }];\n"
+      }
+    },
+    {
+      "id": "d5f039b5-bff5-47ea-85ef-e0714c3796a1",
+      "name": "When Called by the Dashboard",
+      "type": "n8n-nodes-base.executeWorkflowTrigger",
+      "typeVersion": 1.2,
+      "position": [
+        224,
+        192
+      ],
+      "parameters": {
+        "inputSource": "workflowInputs",
+        "workflowInputs": {
+          "values": [
+            {
+              "name": "phone",
+              "type": "string"
+            },
+            {
+              "name": "text",
+              "type": "string"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "1750e825-7ccd-431a-96a4-05a0b7f82cd0",
+      "name": "Prepare the Reply",
+      "type": "n8n-nodes-base.executeWorkflow",
+      "typeVersion": 1.3,
+      "position": [
+        672,
+        96
+      ],
+      "parameters": {
+        "mode": "once",
+        "source": "database",
+        "workflowId": {
+          "__rl": true,
+          "mode": "id",
+          "value": "SELECT_WORKFLOW_NO_SHOW_SHIELD_0_ENGINE",
+          "cachedResultName": "No-Show Shield 0 - Engine"
+        },
+        "workflowInputs": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "op": "=prepare",
+            "payload": "={{ JSON.stringify({ phone: $json.phone, text: $json.text }) }}"
+          },
+          "matchingColumns": [],
+          "schema": [
+            {
+              "id": "op",
+              "displayName": "op",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "canBeUsedToMatch": true,
+              "type": "string"
+            },
+            {
+              "id": "payload",
+              "displayName": "payload",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "canBeUsedToMatch": true,
+              "type": "string"
+            }
+          ],
+          "attemptToConvertTypes": false,
+          "convertFieldsToString": true
+        },
+        "options": {
+          "waitForSubWorkflow": true
+        }
+      }
+    },
+    {
+      "id": "a0c0d48b-362e-4e08-b0ff-032686c9569f",
+      "name": "Ask Claude?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        896,
+        96
+      ],
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "loose"
+          },
+          "conditions": [
+            {
+              "leftValue": "={{ $json.result.useAi }}",
+              "rightValue": "",
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        }
+      }
+    },
+    {
+      "id": "df444996-7395-455f-a21b-9b3421484a21",
+      "name": "Claude Reads the Reply",
+      "type": "@n8n/n8n-nodes-langchain.anthropic",
+      "typeVersion": 1,
+      "position": [
+        1120,
+        32
+      ],
+      "parameters": {
+        "resource": "text",
+        "operation": "message",
+        "modelId": {
+          "__rl": true,
+          "mode": "id",
+          "value": "={{ $json.result.model }}"
+        },
+        "messages": {
+          "values": [
+            {
+              "content": "={{ $json.result.user_prompt }}",
+              "role": "user"
+            }
+          ]
+        },
+        "simplify": true,
+        "options": {
+          "system": "={{ $json.result.system_prompt }}",
+          "maxTokens": 300
+        }
+      },
+      "retryOnFail": true,
+      "maxTries": 2,
+      "onError": "continueRegularOutput"
+    },
+    {
+      "id": "c998e5d2-1e49-49c0-a8dc-78f279874ca1",
+      "name": "Handle the Reply",
+      "type": "n8n-nodes-base.executeWorkflow",
+      "typeVersion": 1.3,
+      "position": [
+        1344,
+        96
+      ],
+      "parameters": {
+        "mode": "once",
+        "source": "database",
+        "workflowId": {
+          "__rl": true,
+          "mode": "id",
+          "value": "SELECT_WORKFLOW_NO_SHOW_SHIELD_0_ENGINE",
+          "cachedResultName": "No-Show Shield 0 - Engine"
+        },
+        "workflowInputs": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "op": "=handle",
+            "payload": "={{ JSON.stringify({ phone: $('Text Details').first().json.phone, text: $('Text Details').first().json.text, ai: $json.content || null }) }}"
+          },
+          "matchingColumns": [],
+          "schema": [
+            {
+              "id": "op",
+              "displayName": "op",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "canBeUsedToMatch": true,
+              "type": "string"
+            },
+            {
+              "id": "payload",
+              "displayName": "payload",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "canBeUsedToMatch": true,
+              "type": "string"
+            }
+          ],
+          "attemptToConvertTypes": false,
+          "convertFieldsToString": true
+        },
+        "options": {
+          "waitForSubWorkflow": true
+        }
+      }
+    },
+    {
+      "id": "7d75df51-6ef9-4498-8df0-a723c5cf7358",
+      "name": "Texts to Send",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1568,
+        96
+      ],
+      "parameters": {
+        "jsCode": "const j = $input.first().json;\nconst out = (j.texts || []).map(t => ({ json: { from: j.from, to: t.to, text: t.body } }));\nfor (const a of j.alerts || []) out.push({ json: { from: j.from, to: j.frontDesk, text: a } });\nreturn j.send ? out : [];\n"
+      }
+    },
+    {
+      "id": "a746f67e-a432-46a7-9fc3-9267d6a72793",
+      "name": "Send the Texts",
+      "type": "n8n-nodes-base.twilio",
+      "typeVersion": 1,
+      "position": [
+        1792,
+        96
+      ],
+      "parameters": {
+        "resource": "sms",
+        "operation": "send",
+        "from": "={{ $json.from }}",
+        "to": "={{ $json.to }}",
+        "message": "={{ $json.text }}",
+        "options": {}
+      },
+      "retryOnFail": true,
+      "maxTries": 2,
+      "onError": "continueRegularOutput"
+    },
+    {
+      "id": "ac842e32-f9eb-4ab4-8933-101d175bd8a2",
+      "name": "Sticky Note ee4feeb0",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        832,
+        192
+      ],
+      "parameters": {
+        "content": "## Patient replies\nEvery text a patient sends lands here. STOP, START, health worries and call-back requests are caught by fixed rules first, so a clinical message never depends on the AI.\n\nEverything else goes to Claude, which only works out what the patient wants: confirm, move, cancel, a question, running late or yes to an open spot. The reply itself comes from tested rules and the real schedule. Moves and cancels free the time for the waitlist straight away, and health concerns text the front desk.",
+        "color": 7
+      }
+    }
+  ],
+  "connections": {
+    "Twilio Incoming Text": {
+      "main": [
+        [
+          {
+            "node": "Acknowledge Twilio",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Acknowledge Twilio": {
+      "main": [
+        [
+          {
+            "node": "Text Details",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Text Details": {
+      "main": [
+        [
+          {
+            "node": "Prepare the Reply",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "When Called by the Dashboard": {
+      "main": [
+        [
+          {
+            "node": "Text Details",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Prepare the Reply": {
+      "main": [
+        [
+          {
+            "node": "Ask Claude?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Ask Claude?": {
+      "main": [
+        [
+          {
+            "node": "Claude Reads the Reply",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Handle the Reply",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Claude Reads the Reply": {
+      "main": [
+        [
+          {
+            "node": "Handle the Reply",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Handle the Reply": {
+      "main": [
+        [
+          {
+            "node": "Texts to Send",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Texts to Send": {
+      "main": [
+        [
+          {
+            "node": "Send the Texts",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "pinData": {}
+}

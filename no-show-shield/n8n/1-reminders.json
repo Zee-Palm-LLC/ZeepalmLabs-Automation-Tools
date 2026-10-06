@@ -1,0 +1,166 @@
+{
+  "name": "No-Show Shield 1 - Reminders",
+  "nodes": [
+    {
+      "id": "69f3b70c-7845-45bb-bdaf-442409f0b5fe",
+      "name": "Every 15 Minutes",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.2,
+      "position": [
+        0,
+        0
+      ],
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "minutes",
+              "minutesInterval": 15
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "1d1fba31-7dfc-4371-8994-48b2b41e158d",
+      "name": "Send Reminders Due",
+      "type": "n8n-nodes-base.executeWorkflow",
+      "typeVersion": 1.3,
+      "position": [
+        224,
+        0
+      ],
+      "parameters": {
+        "mode": "once",
+        "source": "database",
+        "workflowId": {
+          "__rl": true,
+          "mode": "id",
+          "value": "SELECT_WORKFLOW_NO_SHOW_SHIELD_0_ENGINE",
+          "cachedResultName": "No-Show Shield 0 - Engine"
+        },
+        "workflowInputs": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "op": "=reminders",
+            "payload": "={}"
+          },
+          "matchingColumns": [],
+          "schema": [
+            {
+              "id": "op",
+              "displayName": "op",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "canBeUsedToMatch": true,
+              "type": "string"
+            },
+            {
+              "id": "payload",
+              "displayName": "payload",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "canBeUsedToMatch": true,
+              "type": "string"
+            }
+          ],
+          "attemptToConvertTypes": false,
+          "convertFieldsToString": true
+        },
+        "options": {
+          "waitForSubWorkflow": true
+        }
+      }
+    },
+    {
+      "id": "f9ad1c63-8ff3-4233-91cb-7c8f06021238",
+      "name": "Texts to Send",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        448,
+        0
+      ],
+      "parameters": {
+        "jsCode": "const j = $input.first().json;\nconst out = (j.texts || []).map(t => ({ json: { from: j.from, to: t.to, text: t.body } }));\nfor (const a of j.alerts || []) out.push({ json: { from: j.from, to: j.frontDesk, text: a } });\nreturn j.send ? out : [];\n"
+      }
+    },
+    {
+      "id": "96e47d58-c9e1-4b2c-887d-d5ade9951121",
+      "name": "Text the Reminder",
+      "type": "n8n-nodes-base.twilio",
+      "typeVersion": 1,
+      "position": [
+        672,
+        0
+      ],
+      "parameters": {
+        "resource": "sms",
+        "operation": "send",
+        "from": "={{ $json.from }}",
+        "to": "={{ $json.to }}",
+        "message": "={{ $json.text }}",
+        "options": {}
+      },
+      "retryOnFail": true,
+      "maxTries": 2,
+      "onError": "continueRegularOutput"
+    },
+    {
+      "id": "9c650358-1819-4f3a-ac06-eb3024bf765c",
+      "name": "Sticky Note c8e64bf4",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        272,
+        0
+      ],
+      "parameters": {
+        "content": "## Reminders\nEvery 15 minutes the engine finds visits 72 hours, 24 hours and 2 hours away and writes the reminder. Nothing goes out in quiet hours, and patients who already confirmed skip the 24-hour one.\n\nReminders name the time and the provider, never the treatment. In demo mode nothing is sent.",
+        "color": 7
+      }
+    }
+  ],
+  "connections": {
+    "Every 15 Minutes": {
+      "main": [
+        [
+          {
+            "node": "Send Reminders Due",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Send Reminders Due": {
+      "main": [
+        [
+          {
+            "node": "Texts to Send",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Texts to Send": {
+      "main": [
+        [
+          {
+            "node": "Text the Reminder",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1",
+    "timezone": "America/Chicago"
+  },
+  "pinData": {}
+}

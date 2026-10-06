@@ -1,0 +1,127 @@
+{
+  "name": "No-Show Shield 9 - Error Alert",
+  "nodes": [
+    {
+      "id": "f43ef535-a258-44ad-a0e8-9866ecb3b2db",
+      "name": "When a Workflow Fails",
+      "type": "n8n-nodes-base.errorTrigger",
+      "typeVersion": 1,
+      "position": [
+        0,
+        0
+      ],
+      "parameters": {}
+    },
+    {
+      "id": "fa7b0c92-2038-4708-b824-9367b5c64607",
+      "name": "Load Settings",
+      "type": "n8n-nodes-base.dataTable",
+      "typeVersion": 1.1,
+      "position": [
+        224,
+        0
+      ],
+      "parameters": {
+        "resource": "row",
+        "operation": "get",
+        "dataTableId": {
+          "__rl": true,
+          "mode": "id",
+          "value": "SELECT_NSS_STATE_TABLE",
+          "cachedResultName": "nss_state"
+        },
+        "matchType": "allConditions",
+        "filters": {
+          "conditions": [
+            {
+              "keyName": "rid",
+              "condition": "eq",
+              "keyValue": "settings"
+            }
+          ]
+        },
+        "returnAll": true
+      },
+      "executeOnce": true,
+      "alwaysOutputData": true
+    },
+    {
+      "id": "3e024008-b73f-4051-aeb0-1f48a24b8b24",
+      "name": "Describe the Error",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        448,
+        0
+      ],
+      "parameters": {
+        "jsCode": "const f = $('When a Workflow Fails').first().json;\nconst row = $('Load Settings').all().map(i => i.json).find(r => r.rid === 'settings');\nlet s = {};\ntry {\n  s = JSON.parse(row && row.data ? row.data : '{}');\n} catch (e) {\n  s = {};\n}\nconst nl = String.fromCharCode(10);\nreturn [{ json: {\n  to: s.frontDeskEmail || 'frontdesk@example.com',\n  subject: 'No-Show Shield: ' + (f.workflow ? f.workflow.name : 'a workflow') + ' failed',\n  text: ['Hi ' + (s.frontDeskName || 'there') + ',', '', 'The workflow \"' + (f.workflow ? f.workflow.name : '') + '\" stopped at \"' + (f.execution ? f.execution.lastNodeExecuted : '') + '\".', '', 'Error: ' + (f.execution && f.execution.error ? f.execution.error.message : 'unknown'), '', 'Open the run: ' + (f.execution ? f.execution.url || '' : '')].join(nl)\n} }];\n"
+      },
+      "executeOnce": true
+    },
+    {
+      "id": "3f68b48a-692b-4314-8322-4695b2d9d9e3",
+      "name": "Email the Front Desk",
+      "type": "n8n-nodes-base.gmail",
+      "typeVersion": 2.2,
+      "position": [
+        672,
+        0
+      ],
+      "parameters": {
+        "sendTo": "={{ $json.to }}",
+        "subject": "={{ $json.subject }}",
+        "emailType": "text",
+        "message": "={{ $json.text }}",
+        "options": {
+          "appendAttribution": false
+        }
+      },
+      "credentials": {
+        "gmailOAuth2": {
+          "id": "",
+          "name": "Gmail account"
+        }
+      }
+    }
+  ],
+  "connections": {
+    "When a Workflow Fails": {
+      "main": [
+        [
+          {
+            "node": "Load Settings",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Load Settings": {
+      "main": [
+        [
+          {
+            "node": "Describe the Error",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Describe the Error": {
+      "main": [
+        [
+          {
+            "node": "Email the Front Desk",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "pinData": {}
+}

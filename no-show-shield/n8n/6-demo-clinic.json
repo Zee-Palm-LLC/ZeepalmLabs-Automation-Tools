@@ -1,0 +1,100 @@
+{
+  "name": "No-Show Shield 6 - Demo Clinic",
+  "nodes": [
+    {
+      "id": "ee75a6ca-ba7a-4790-8c16-f4fc0db9bd47",
+      "name": "Run Manually",
+      "type": "n8n-nodes-base.manualTrigger",
+      "typeVersion": 1,
+      "position": [
+        0,
+        0
+      ],
+      "parameters": {}
+    },
+    {
+      "id": "0f0ee30b-da7f-43bf-9e3b-ced6b5523217",
+      "name": "Rebuild the Demo Clinic",
+      "type": "n8n-nodes-base.executeWorkflow",
+      "typeVersion": 1.3,
+      "position": [
+        224,
+        0
+      ],
+      "parameters": {
+        "mode": "once",
+        "source": "database",
+        "workflowId": {
+          "__rl": true,
+          "mode": "id",
+          "value": "SELECT_WORKFLOW_NO_SHOW_SHIELD_0_ENGINE",
+          "cachedResultName": "No-Show Shield 0 - Engine"
+        },
+        "workflowInputs": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "op": "=reset",
+            "payload": "={}"
+          },
+          "matchingColumns": [],
+          "schema": [
+            {
+              "id": "op",
+              "displayName": "op",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "canBeUsedToMatch": true,
+              "type": "string"
+            },
+            {
+              "id": "payload",
+              "displayName": "payload",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "canBeUsedToMatch": true,
+              "type": "string"
+            }
+          ],
+          "attemptToConvertTypes": false,
+          "convertFieldsToString": true
+        },
+        "options": {
+          "waitForSubWorkflow": true
+        }
+      }
+    },
+    {
+      "id": "4492044c-217a-4d0e-aa43-ac5c87ad19c4",
+      "name": "Sticky Note 1d3fab39",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        48,
+        0
+      ],
+      "parameters": {
+        "content": "## Demo clinic\nRun this once after importing. It builds 30 days of history and two weeks of bookings for a made-up dental clinic, with reminders, replies and waitlist refills already in it. Settings are kept.\n\nEvery patient, phone number and message is fictional.",
+        "color": 7
+      }
+    }
+  ],
+  "connections": {
+    "Run Manually": {
+      "main": [
+        [
+          {
+            "node": "Rebuild the Demo Clinic",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "pinData": {}
+}
