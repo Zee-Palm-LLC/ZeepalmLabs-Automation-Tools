@@ -3,7 +3,6 @@
 A retention dashboard for gyms. It shows which members are about to cancel, has Claude write each of them a personal win-back email, and tracks who walks back through the door.
 
 - **Live demo:** [gym-churn-radar.vercel.app](https://gym-churn-radar.vercel.app). It runs entirely in your browser with a sample gym, so nothing is sent.
-- **Explainer video:** [media/Gym-Churn-Radar-Explainer.mp4](media/Gym-Churn-Radar-Explainer.mp4), 77 seconds.
 
 ## How it works
 
@@ -68,4 +67,3 @@ Deploy to Vercel as a Vite project with **Root Directory** `gym-churn-radar`, **
 - `src/demo/`: the demo gym and the in-browser backend used by the public site
 - `scripts/og.mjs`: draws the link preview image at build time
 - `n8n/`: the seven n8n workflows and how to set them up
-- `media/`: the explainer video
